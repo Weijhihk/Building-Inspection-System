@@ -8,6 +8,8 @@
 @layer base {
   body {
     @apply bg-zinc-50 text-zinc-900 antialiased;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
   }
 }
 
