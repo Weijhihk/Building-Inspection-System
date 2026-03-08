@@ -18,6 +18,11 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
+  // Realtime refs for synchronous updates during fast gestures
+  const scaleRef = useRef(1);
+  const posRef = useRef({ x: 0, y: 0 });
+  const layerRef = useRef<any>(null);
+
   // Touch state for pinch-to-zoom
   const lastCenter = useRef<{ x: number, y: number } | null>(null);
   const lastDist = useRef<number>(0);
@@ -50,12 +55,16 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
       
       const newX = (dimensions.width - image.width * initialScale) / 2;
       const newY = (dimensions.height - image.height * initialScale) / 2;
-      
-      setScale(isNaN(initialScale) ? 1 : initialScale);
-      setPosition({
+      const finalScale = isNaN(initialScale) ? 1 : initialScale;
+      const finalPos = {
         x: isNaN(newX) ? 0 : newX,
         y: isNaN(newY) ? 0 : newY,
-      });
+      };
+
+      scaleRef.current = finalScale;
+      posRef.current = finalPos;
+      setScale(finalScale);
+      setPosition(finalPos);
     }
   }, [status, image, dimensions.width, dimensions.height]);
 
@@ -64,13 +73,14 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = scale;
+    const oldScale = scaleRef.current;
+    const oldPosition = posRef.current;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
     const mousePointTo = {
-      x: (pointer.x - position.x) / oldScale,
-      y: (pointer.y - position.y) / oldScale,
+      x: (pointer.x - oldPosition.x) / oldScale,
+      y: (pointer.y - oldPosition.y) / oldScale,
     };
 
     const speed = 1.1;
@@ -80,11 +90,16 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     const newX = pointer.x - mousePointTo.x * finalScale;
     const newY = pointer.y - mousePointTo.y * finalScale;
 
-    setScale(isNaN(finalScale) ? 1 : finalScale);
-    setPosition({
-      x: isNaN(newX) ? position.x : newX,
-      y: isNaN(newY) ? position.y : newY,
-    });
+    const updatedScale = isNaN(finalScale) ? oldScale : finalScale;
+    const updatedPos = {
+      x: isNaN(newX) ? oldPosition.x : newX,
+      y: isNaN(newY) ? oldPosition.y : newY,
+    };
+
+    scaleRef.current = updatedScale;
+    posRef.current = updatedPos;
+    setScale(updatedScale);
+    setPosition(updatedPos);
   };
 
   function getDistance(p1: { x: number, y: number }, p2: { x: number, y: number }) {
@@ -104,8 +119,8 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     const touch2 = e.evt.touches[1];
 
     if (touch1 && touch2) {
-      if (stageRef.current && stageRef.current.isDragging()) {
-        stageRef.current.stopDrag();
+      if (layerRef.current && layerRef.current.isDragging()) {
+        layerRef.current.stopDrag();
       }
 
       const p1 = { x: touch1.clientX, y: touch1.clientY };
@@ -121,27 +136,38 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         lastDist.current = dist;
       }
 
-      // Calculate new scale
+      // get current scale and position from refs to avoid stale closure state
+      const oldScale = scaleRef.current;
+      const oldPosition = posRef.current;
+
       const distDiff = dist / lastDist.current;
-      const newScale = scale * distDiff;
+      const newScale = oldScale * distDiff;
       const finalScale = Math.max(0.05, Math.min(newScale, 20));
 
-      // Calculate position so we zoom into the center of the pinch
       const center = getCenter(p1, p2);
       
+      // Calculate pan offset based on center movement
+      const dx = center.x - lastCenter.current.x;
+      const dy = center.y - lastCenter.current.y;
+      
       const pointTo = {
-        x: (center.x - position.x) / scale,
-        y: (center.y - position.y) / scale,
+        x: (lastCenter.current.x - oldPosition.x) / oldScale,
+        y: (lastCenter.current.y - oldPosition.y) / oldScale,
       };
 
-      const newX = center.x - pointTo.x * finalScale;
-      const newY = center.y - pointTo.y * finalScale;
+      const newX = lastCenter.current.x - pointTo.x * finalScale + dx;
+      const newY = lastCenter.current.y - pointTo.y * finalScale + dy;
 
-      setScale(isNaN(finalScale) ? scale : finalScale);
-      setPosition({
-        x: isNaN(newX) ? position.x : newX,
-        y: isNaN(newY) ? position.y : newY,
-      });
+      const updatedScale = isNaN(finalScale) ? oldScale : finalScale;
+      const updatedPos = {
+        x: isNaN(newX) ? oldPosition.x : newX,
+        y: isNaN(newY) ? oldPosition.y : newY,
+      };
+
+      scaleRef.current = updatedScale;
+      posRef.current = updatedPos;
+      setScale(updatedScale);
+      setPosition(updatedPos);
 
       lastDist.current = dist;
       lastCenter.current = center;
@@ -203,12 +229,17 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         className={status === 'loaded' ? 'opacity-100' : 'opacity-0'}
       >
         <Layer
+          ref={layerRef}
           x={position.x}
           y={position.y}
           scaleX={scale}
           scaleY={scale}
           draggable
-          onDragEnd={(e) => setPosition({ x: e.target.x(), y: e.target.y() })}
+          onDragEnd={(e) => {
+            const newPos = { x: e.target.x(), y: e.target.y() };
+            posRef.current = newPos;
+            setPosition(newPos);
+          }}
         >
           {image && status === 'loaded' && <KonvaImage image={image} />}
           {image && status === 'loaded' && pins.map((pin, index) => (
