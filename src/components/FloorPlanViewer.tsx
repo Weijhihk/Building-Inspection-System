@@ -17,6 +17,10 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  
+  // Touch state for pinch-to-zoom
+  const lastCenter = useRef<{ x: number, y: number } | null>(null);
+  const lastDist = useRef<number>(0);
 
   useEffect(() => {
     const updateSize = () => {
@@ -83,6 +87,72 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     });
   };
 
+  function getDistance(p1: { x: number, y: number }, p2: { x: number, y: number }) {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+  }
+
+  function getCenter(p1: { x: number, y: number }, p2: { x: number, y: number }) {
+    return {
+      x: (p1.x + p2.x) / 2,
+      y: (p1.y + p2.y) / 2,
+    };
+  }
+
+  const handleTouchMove = (e: any) => {
+    e.evt.preventDefault();
+    const touch1 = e.evt.touches[0];
+    const touch2 = e.evt.touches[1];
+
+    if (touch1 && touch2) {
+      if (stageRef.current && stageRef.current.isDragging()) {
+        stageRef.current.stopDrag();
+      }
+
+      const p1 = { x: touch1.clientX, y: touch1.clientY };
+      const p2 = { x: touch2.clientX, y: touch2.clientY };
+
+      if (!lastCenter.current) {
+        lastCenter.current = getCenter(p1, p2);
+        return;
+      }
+      
+      const dist = getDistance(p1, p2);
+      if (!lastDist.current) {
+        lastDist.current = dist;
+      }
+
+      // Calculate new scale
+      const distDiff = dist / lastDist.current;
+      const newScale = scale * distDiff;
+      const finalScale = Math.max(0.05, Math.min(newScale, 20));
+
+      // Calculate position so we zoom into the center of the pinch
+      const center = getCenter(p1, p2);
+      
+      const pointTo = {
+        x: (center.x - position.x) / scale,
+        y: (center.y - position.y) / scale,
+      };
+
+      const newX = center.x - pointTo.x * finalScale;
+      const newY = center.y - pointTo.y * finalScale;
+
+      setScale(isNaN(finalScale) ? scale : finalScale);
+      setPosition({
+        x: isNaN(newX) ? position.x : newX,
+        y: isNaN(newY) ? position.y : newY,
+      });
+
+      lastDist.current = dist;
+      lastCenter.current = center;
+    }
+  };
+
+  const handleTouchEnd = () => {
+    lastDist.current = 0;
+    lastCenter.current = null;
+  };
+
   const handleStageClick = (e: any) => {
     // If clicked on a pin, don't add a new one
     if (e.target !== e.target.getStage() && e.target.className !== 'Image' && e.target.className !== 'Rect') {
@@ -121,6 +191,8 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         width={dimensions.width}
         height={dimensions.height}
         onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         ref={stageRef}
         onClick={handleStageClick}
         onTap={handleStageClick}
