@@ -24,11 +24,12 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
       photos: [],
       status: 'pending'
     };
-    setDefects([...defects, newDefect]);
+    // Replace any existing defect to strictly enforce 1 defect per pin
+    setDefects([newDefect]);
   };
 
   const handleRemoveDefect = (id: string) => {
-    setDefects(defects.filter(d => d.id !== id));
+    setDefects([]);
   };
 
   const handlePhotoUpload = (defectId: string, e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,7 +128,7 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
           {/* Right: Selected Defects Details */}
           <div className="flex-1 p-6 overflow-y-auto bg-white">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              已選項目 <span className="text-sm font-normal text-zinc-400">({defects.length})</span>
+              目前項目 <span className="text-sm font-normal text-zinc-400">({defects.length ? '1' : '0'}/1)</span>
             </h3>
             
             {defects.length === 0 ? (
@@ -148,9 +149,11 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
                     >
                       <button
                         onClick={() => handleRemoveDefect(defect.id)}
-                        className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                        className="absolute top-4 right-4 px-3 py-1.5 flex items-center gap-1 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all border border-red-100 bg-white shadow-sm"
+                        title="刪除並重新選擇"
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={14} />
+                        刪除項目
                       </button>
 
                       <div className="flex items-center gap-2">

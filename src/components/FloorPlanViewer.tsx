@@ -102,25 +102,21 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     }
   };
 
-  if (status === 'loading') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-zinc-400 bg-zinc-100">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 mb-4"></div>
-        <p>載入底圖中...</p>
-      </div>
-    );
-  }
-
-  if (status === 'failed') {
-    return (
-      <div className="flex items-center justify-center h-full text-red-500 bg-zinc-100">
-        底圖載入失敗，請重新上傳。
-      </div>
-    );
-  }
-
   return (
     <div ref={containerRef} className="w-full h-full bg-zinc-200 overflow-hidden cursor-crosshair relative">
+      {status === 'loading' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-400 bg-zinc-100 z-10">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 mb-4"></div>
+          <p>載入底圖中...</p>
+        </div>
+      )}
+
+      {status === 'failed' && (
+        <div className="absolute inset-0 flex items-center justify-center text-red-500 bg-zinc-100 z-10">
+          底圖載入失敗，請重新上傳。
+        </div>
+      )}
+
       <Stage
         width={dimensions.width}
         height={dimensions.height}
@@ -128,6 +124,7 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         ref={stageRef}
         onClick={handleStageClick}
         onTap={handleStageClick}
+        className={status === 'loaded' ? 'opacity-100' : 'opacity-0'}
       >
         <Layer
           x={position.x}
@@ -137,8 +134,8 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
           draggable
           onDragEnd={(e) => setPosition({ x: e.target.x(), y: e.target.y() })}
         >
-          {image && <KonvaImage image={image} />}
-          {image && pins.map((pin) => (
+          {image && status === 'loaded' && <KonvaImage image={image} />}
+          {image && status === 'loaded' && pins.map((pin, index) => (
             <Group
               key={pin.id}
               x={pin.x * image.width}
@@ -151,8 +148,20 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
                 e.cancelBubble = true;
                 onSelectPin(pin);
               }}
-              className="cursor-pointer"
+              onMouseEnter={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = 'pointer';
+              }}
+              onMouseLeave={(e) => {
+                const stage = e.target.getStage();
+                if (stage) stage.container().style.cursor = 'crosshair';
+              }}
             >
+              {/* Hit area for better touch targets */}
+              <Circle
+                radius={30 / scale}
+                fill="transparent"
+              />
               <Circle
                 radius={12 / scale}
                 fill="#ef4444"
@@ -161,7 +170,7 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
                 shadowBlur={5 / scale}
               />
               <Text
-                text={pin.defects.length.toString()}
+                text={(index + 1).toString()}
                 fontSize={10 / scale}
                 fill="white"
                 x={-4 / scale}

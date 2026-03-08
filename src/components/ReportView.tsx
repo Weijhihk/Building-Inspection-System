@@ -8,8 +8,6 @@ interface ReportViewProps {
 }
 
 const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins }) => {
-  const allDefects = pins.flatMap(pin => pin.defects.map(d => ({ ...d, pinId: pin.id, pinCoords: `(${pin.x.toFixed(2)}, ${pin.y.toFixed(2)})` })));
-
   return (
     <div className="bg-white p-8 max-w-5xl mx-auto print:p-0">
       <div className="text-center mb-12">
@@ -35,7 +33,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins }) => {
       </section>
 
       {/* Defect List */}
-      <section>
+      <section className="break-before-page mt-12 print:mt-0 print:pt-8">
         <h2 className="text-xl font-bold mb-6 border-b-2 border-zinc-900 pb-2">缺失項目清單</h2>
         <div className="space-y-8">
           {pins.map((pin, pinIdx) => (

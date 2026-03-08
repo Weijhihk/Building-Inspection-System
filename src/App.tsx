@@ -65,7 +65,11 @@ export default function App() {
 
   const handleSaveDefects = (defects: DefectItem[]) => {
     if (selectedPin) {
-      setPins(pins.map(p => p.id === selectedPin.id ? { ...p, defects } : p));
+      if (defects.length === 0) {
+        setPins(pins.filter(p => p.id !== selectedPin.id));
+      } else {
+        setPins(pins.map(p => p.id === selectedPin.id ? { ...p, defects } : p));
+      }
       setSelectedPin(null);
     }
   };
@@ -184,7 +188,13 @@ export default function App() {
         {selectedPin && (
           <DefectForm
             pin={selectedPin}
-            onClose={() => setSelectedPin(null)}
+            onClose={() => {
+              const currentPin = pins.find(p => p.id === selectedPin.id);
+              if (currentPin && currentPin.defects.length === 0) {
+                setPins(prev => prev.filter(p => p.id !== selectedPin.id));
+              }
+              setSelectedPin(null);
+            }}
             onSave={handleSaveDefects}
           />
         )}
@@ -195,7 +205,7 @@ export default function App() {
         <div className="fixed bottom-6 left-6 bg-zinc-900 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-6 no-print">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase font-bold text-zinc-400">總缺失數</span>
-            <span className="text-xl font-bold">{pins.reduce((acc, p) => acc + p.defects.length, 0)}</span>
+            <span className="text-xl font-bold">{pins.filter(p => p.defects.length > 0).length}</span>
           </div>
           <div className="w-px h-8 bg-white/10" />
           <div className="flex flex-col">
