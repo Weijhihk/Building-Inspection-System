@@ -1,0 +1,5 @@
+{
+  "name": "建築驗收系統 (Building Inspection System)",
+  "description": "一個專業的建築驗收系統，支援平面圖上傳、縮放標記、缺失項目分類管理及報表產出。",
+  "requestFramePermissions": []
+}
