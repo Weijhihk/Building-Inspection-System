@@ -25,7 +25,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-konva": "^19.2.3",
+    "react-use-gesture": "^9.1.3",
     "tailwind-merge": "^3.5.0",
+    "use-gesture": "^1.0.0",
     "use-image": "^1.1.4",
     "vite": "^6.2.0"
   },

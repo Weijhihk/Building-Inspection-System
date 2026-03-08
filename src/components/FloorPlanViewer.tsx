@@ -71,10 +71,11 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
-    if (!stage) return;
+    const layer = layerRef.current;
+    if (!stage || !layer) return;
 
-    const oldScale = scaleRef.current;
-    const oldPosition = posRef.current;
+    const oldScale = layer.scaleX();
+    const oldPosition = layer.position();
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
@@ -90,16 +91,21 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     const newX = pointer.x - mousePointTo.x * finalScale;
     const newY = pointer.y - mousePointTo.y * finalScale;
 
-    const updatedScale = isNaN(finalScale) ? oldScale : finalScale;
-    const updatedPos = {
-      x: isNaN(newX) ? oldPosition.x : newX,
-      y: isNaN(newY) ? oldPosition.y : newY,
-    };
+    // Direct mutation for 60fps performance without React batch lag
+    layer.scale({ x: finalScale, y: finalScale });
+    layer.position({ x: newX, y: newY });
+    layer.batchDraw();
 
-    scaleRef.current = updatedScale;
-    posRef.current = updatedPos;
-    setScale(updatedScale);
-    setPosition(updatedPos);
+    // Sync ref
+    scaleRef.current = finalScale;
+    posRef.current = { x: newX, y: newY };
+
+    // Debounce react state sync
+    if ((window as any).wheelTimeout) clearTimeout((window as any).wheelTimeout);
+    (window as any).wheelTimeout = setTimeout(() => {
+      setScale(finalScale);
+      setPosition({ x: newX, y: newY });
+    }, 200);
   };
 
   function getDistance(p1: { x: number, y: number }, p2: { x: number, y: number }) {
@@ -117,10 +123,11 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     e.evt.preventDefault();
     const touch1 = e.evt.touches[0];
     const touch2 = e.evt.touches[1];
+    const layer = layerRef.current;
 
-    if (touch1 && touch2) {
-      if (layerRef.current && layerRef.current.isDragging()) {
-        layerRef.current.stopDrag();
+    if (touch1 && touch2 && layer) {
+      if (layer.isDragging()) {
+        layer.stopDrag(); // Intercept default pan so we can pinch
       }
 
       const p1 = { x: touch1.clientX, y: touch1.clientY };
@@ -136,9 +143,8 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         lastDist.current = dist;
       }
 
-      // get current scale and position from refs to avoid stale closure state
-      const oldScale = scaleRef.current;
-      const oldPosition = posRef.current;
+      const oldScale = layer.scaleX();
+      const oldPosition = layer.position();
 
       const distDiff = dist / lastDist.current;
       const newScale = oldScale * distDiff;
@@ -146,7 +152,6 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
 
       const center = getCenter(p1, p2);
       
-      // Calculate pan offset based on center movement
       const dx = center.x - lastCenter.current.x;
       const dy = center.y - lastCenter.current.y;
       
@@ -158,16 +163,12 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
       const newX = lastCenter.current.x - pointTo.x * finalScale + dx;
       const newY = lastCenter.current.y - pointTo.y * finalScale + dy;
 
-      const updatedScale = isNaN(finalScale) ? oldScale : finalScale;
-      const updatedPos = {
-        x: isNaN(newX) ? oldPosition.x : newX,
-        y: isNaN(newY) ? oldPosition.y : newY,
-      };
+      layer.scale({ x: finalScale, y: finalScale });
+      layer.position({ x: newX, y: newY });
+      layer.batchDraw();
 
-      scaleRef.current = updatedScale;
-      posRef.current = updatedPos;
-      setScale(updatedScale);
-      setPosition(updatedPos);
+      scaleRef.current = finalScale;
+      posRef.current = { x: newX, y: newY };
 
       lastDist.current = dist;
       lastCenter.current = center;
@@ -177,6 +178,12 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
   const handleTouchEnd = () => {
     lastDist.current = 0;
     lastCenter.current = null;
+    
+    // Sync React state upon gesture end
+    if (layerRef.current) {
+      setScale(layerRef.current.scaleX());
+      setPosition(layerRef.current.position());
+    }
   };
 
   const handleStageClick = (e: any) => {
