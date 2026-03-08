@@ -11,6 +11,9 @@
     touch-action: pan-x pan-y;
     -webkit-text-size-adjust: 100%;
   }
+  .konvajs-content {
+    touch-action: none !important;
+  }
 }
 
 @media print {

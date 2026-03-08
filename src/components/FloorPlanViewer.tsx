@@ -173,7 +173,11 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
   };
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-zinc-200 overflow-hidden cursor-crosshair relative">
+    <div 
+      ref={containerRef} 
+      className="w-full h-full bg-zinc-200 overflow-hidden cursor-crosshair relative"
+      style={{ touchAction: 'none' }}
+    >
       {status === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-zinc-400 bg-zinc-100 z-10">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-900 mb-4"></div>
