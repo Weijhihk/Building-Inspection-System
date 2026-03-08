@@ -11,6 +11,7 @@ export default function App() {
   const [pins, setPins] = useState<Pin[]>([]);
   const [selectedPin, setSelectedPin] = useState<Pin | null>(null);
   const [view, setView] = useState<'editor' | 'report'>('editor');
+  const [printMode, setPrintMode] = useState<'all' | 'floorplan' | 'table'>('all');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -74,8 +75,11 @@ export default function App() {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = (mode: 'floorplan' | 'table') => {
+    setPrintMode(mode);
+    setTimeout(() => {
+      window.print();
+    }, 100);
   };
 
   if (!floorPlan) {
@@ -140,13 +144,22 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           {view === 'report' && (
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white text-sm font-bold rounded-xl hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200"
-            >
-              <Printer size={18} />
-              <span className="hidden sm:inline">列印報表</span>
-            </button>
+            <>
+              <button
+                onClick={() => handlePrint('floorplan')}
+                className="flex items-center gap-2 px-4 py-2 bg-white text-zinc-900 border border-zinc-200 text-sm font-bold rounded-xl hover:bg-zinc-50 transition-all shadow-sm"
+              >
+                <Printer size={18} />
+                <span className="hidden sm:inline">列印平面圖</span>
+              </button>
+              <button
+                onClick={() => handlePrint('table')}
+                className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white text-sm font-bold rounded-xl hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200"
+              >
+                <Printer size={18} />
+                <span className="hidden sm:inline">列印項目總表</span>
+              </button>
+            </>
           )}
         </div>
       </nav>
@@ -177,7 +190,7 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="absolute inset-0 overflow-y-auto bg-white"
             >
-              <ReportView imageUrl={floorPlan} pins={pins} />
+              <ReportView imageUrl={floorPlan} pins={pins} printMode={printMode} />
             </motion.div>
           )}
         </AnimatePresence>

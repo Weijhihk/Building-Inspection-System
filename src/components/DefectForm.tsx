@@ -4,6 +4,8 @@ import { DefectItem, DefectCategory, Pin } from '../types';
 import { DEFAULT_DEFECT_ITEMS } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 
+const COMMON_AREAS = ['客廳', '餐廳', '廚房', '主臥室', '次臥室1', '次臥室2', '主浴', '次浴'];
+
 interface DefectFormProps {
   pin: Pin;
   onClose: () => void;
@@ -13,6 +15,7 @@ interface DefectFormProps {
 const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
   const [defects, setDefects] = useState<DefectItem[]>(pin.defects);
   const [activeCategory, setActiveCategory] = useState<DefectCategory>(DefectCategory.CEILING);
+  const [selectedArea, setSelectedArea] = useState<string>(COMMON_AREAS[0]);
   const [customItem, setCustomItem] = useState('');
 
   const handleAddDefect = (name: string, category: DefectCategory) => {
@@ -21,6 +24,7 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
       name,
       category,
       description: '',
+      area: selectedArea,
       photos: [],
       status: 'pending'
     };
@@ -49,6 +53,10 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
     setDefects(defects.map(d => d.id === defectId ? { ...d, description: desc } : d));
   };
 
+  const handleAreaChange = (defectId: string, area: string) => {
+    setDefects(defects.map(d => d.id === defectId ? { ...d, area } : d));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <motion.div 
@@ -71,18 +79,42 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
           {/* Left: Category & Items Selection */}
           <div className="w-1/3 border-right bg-zinc-50 p-4 overflow-y-auto">
             <div className="space-y-4">
-              <div className="flex gap-1 p-1 bg-zinc-200 rounded-lg">
-                {Object.values(DefectCategory).map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
-                      activeCategory === cat ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
+              {/* Primary Step: Select Area */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-zinc-900 uppercase tracking-wider">1. 選擇發生區域</p>
+                <div className="flex flex-wrap gap-2 mb-4 border-b border-zinc-200 pb-4">
+                  {COMMON_AREAS.map(area => (
+                    <button
+                      key={area}
+                      onClick={() => setSelectedArea(area)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors border ${
+                        selectedArea === area 
+                          ? 'bg-zinc-900 border-zinc-900 text-white' 
+                          : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400'
+                      }`}
+                    >
+                      {area}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Secondary Step: Select Category & Item */}
+              <div className="space-y-2 border-t border-zinc-200 pt-2">
+                <p className="text-xs font-bold text-zinc-900 uppercase tracking-wider mb-2">2. 選擇缺失項目</p>
+                <div className="flex gap-1 p-1 bg-zinc-200 rounded-lg">
+                  {Object.values(DefectCategory).map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                        activeCategory === cat ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -161,6 +193,26 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
                           {defect.category}
                         </span>
                         <h4 className="font-bold">{defect.name}</h4>
+                      </div>
+
+                      {/* Area Modification (for existing defect) */}
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-zinc-400">修改區域：</label>
+                        <div className="flex flex-wrap gap-2">
+                          {COMMON_AREAS.map(area => (
+                            <button
+                              key={area}
+                              onClick={() => handleAreaChange(defect.id, area)}
+                              className={`px-3 py-1 text-xs font-bold rounded-full transition-colors border ${
+                                defect.area === area 
+                                  ? 'bg-zinc-900 border-zinc-900 text-white' 
+                                  : 'bg-white border-zinc-200 text-zinc-600 hover:border-zinc-400'
+                              }`}
+                            >
+                              {area}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       <textarea

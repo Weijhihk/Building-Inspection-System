@@ -10,6 +10,7 @@ export interface DefectItem {
   name: string;
   category: DefectCategory;
   description: string;
+  area?: string; // e.g. 客廳、主臥室
   photos: string[]; // base64 or URLs
   status: 'pending' | 'fixed';
 }
