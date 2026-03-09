@@ -27,3 +27,6 @@ yarn-error.log*
 # Environment Variables
 .env*
 !.env.example
+
+# Local Database
+database.sqlite

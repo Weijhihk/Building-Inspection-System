@@ -1,14 +1,7 @@
-export enum DefectCategory {
-  CEILING = '天花板',
-  FLOOR = '地坪',
-  WALL = '牆面',
-  OTHER = '其他'
-}
-
 export interface DefectItem {
   id: string;
   name: string;
-  category: DefectCategory;
+  category: string;
   description: string;
   area?: string; // e.g. 客廳、主臥室
   photos: string[]; // base64 or URLs

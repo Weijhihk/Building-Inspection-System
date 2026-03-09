@@ -1,54 +1,60 @@
 import React, { useState, useCallback } from 'react';
-import { Upload, FileText, Printer, ChevronLeft, Plus, Home } from 'lucide-react';
+import { Upload, Printer, ChevronLeft, Home, UploadCloud } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import FloorPlanViewer from './components/FloorPlanViewer';
 import DefectForm from './components/DefectForm';
 import ReportView from './components/ReportView';
+import ProjectSelector from './components/ProjectSelector';
 import { Pin, DefectItem } from './types';
 
+interface Selection {
+  projectId: string;
+  building: string;
+  floor: string;
+  unitNum: string;
+  unitId: string;
+}
+
 export default function App() {
+  const [selection, setSelection] = useState<Selection | null>(null);
   const [floorPlan, setFloorPlan] = useState<string | null>(null);
   const [pins, setPins] = useState<Pin[]>([]);
+  
   const [selectedPin, setSelectedPin] = useState<Pin | null>(null);
   const [view, setView] = useState<'editor' | 'report'>('editor');
   const [printMode, setPrintMode] = useState<'all' | 'floorplan' | 'table'>('all');
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const img = new Image();
-        img.onload = () => {
-          const MAX_SIZE = 4096;
-          let width = img.width;
-          let height = img.height;
+  const handleSelectUnit = async (projectId: string, building: string, floor: string, unitNum: string) => {
+    try {
+      // 1. Fetch unit details to get unitId (and pins)
+      const resUnit = await fetch(`/api/units/${projectId}/${building}/${floor}/${unitNum}`);
+      const unitData = await resUnit.json();
+      
+      const sessionSelection = { projectId, building, floor, unitNum, unitId: unitData.id };
+      setSelection(sessionSelection);
 
-          if (width > MAX_SIZE || height > MAX_SIZE) {
-            const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
-            width *= ratio;
-            height *= ratio;
-          }
+      // Compute static floor plan image URL
+      // Rule: building = 'A棟' -> 'A', unitNum = '1戶' -> '01', floor = '2F'
+      const buildingLetter = building.replace('棟', '');
+      const unitNumberStr = unitNum.replace('戶', '');
+      const unitNumberFormatted = unitNumberStr.padStart(2, '0');
+      const staticImageUrl = `/Building-Inspection-System/floorplans/${projectId}_${buildingLetter}_${floor}_${unitNumberFormatted}.jpg`;
+      
+      setFloorPlan(staticImageUrl);
 
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            setFloorPlan(canvas.toDataURL('image/jpeg', 0.8));
-            setPins([]);
-          } else {
-            setFloorPlan(reader.result as string);
-            setPins([]);
-          }
-        };
-        img.onerror = () => {
-          alert('無法載入圖片，請確保上傳的是有效的圖片檔案 (JPG, PNG)。');
-        };
-        img.src = reader.result as string;
-      };
-      reader.readAsDataURL(file);
+      // 2. Fetch pins for this unit (from database)
+      if (unitData.id) {
+        const resPins = await fetch(`/api/pins/${unitData.id}`);
+        const pinsData = await resPins.json();
+        setPins(pinsData || []);
+      } else {
+        setPins([]);
+      }
+      
+      setView('editor');
+    } catch (err) {
+      console.error('Failed to load unit data', err);
+      alert('載入資料失敗，請確認後端伺服器運行中');
     }
   };
 
@@ -64,14 +70,28 @@ export default function App() {
     setSelectedPin(newPin);
   }, []);
 
-  const handleSaveDefects = (defects: DefectItem[]) => {
-    if (selectedPin) {
+  const handleSaveDefects = async (defects: DefectItem[]) => {
+    if (selectedPin && selection) {
+      let newPins;
       if (defects.length === 0) {
-        setPins(pins.filter(p => p.id !== selectedPin.id));
+        newPins = pins.filter(p => p.id !== selectedPin.id);
       } else {
-        setPins(pins.map(p => p.id === selectedPin.id ? { ...p, defects } : p));
+        newPins = pins.map(p => p.id === selectedPin.id ? { ...p, defects } : p);
       }
+      
+      setPins(newPins);
       setSelectedPin(null);
+
+      // Persist to backend
+      try {
+        await fetch(`/api/pins/${selection.unitId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pins: newPins })
+        });
+      } catch (err) {
+        console.error('Failed to save pins', err);
+      }
     }
   };
 
@@ -82,29 +102,66 @@ export default function App() {
     }, 100);
   };
 
+  const handleExportData = async () => {
+    if (!selection) return;
+    
+    // Flatten pins and defects into the new 12-column array
+    const flatExportData = [];
+    
+    for (const pin of pins) {
+      for (const defect of pin.defects) {
+        // Safe split for generic string category "(Level 1) - (Level 2)"
+        const categoryParts = defect.category.split(' - ');
+        const category_1 = categoryParts[0] || defect.category;
+        const category_2 = categoryParts[1] || '';
+        
+        flatExportData.push({
+          project_id: selection.projectId,
+          building: selection.building,
+          floor: selection.floor,
+          unit_number: selection.unitNum,
+          defect_id: defect.id,
+          pin_coords: JSON.stringify({ x: pin.x, y: pin.y }),
+          area: defect.area || '',
+          category_1,
+          category_2,
+          defect_name: defect.name,
+          description: defect.description || '',
+          photos_base64: JSON.stringify(defect.photos || [])
+        });
+      }
+    }
+    
+    if (flatExportData.length === 0) {
+      alert('無缺失資料可匯出！');
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/export-defects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defects: flatExportData })
+      });
+      if (!resp.ok) throw new Error('API return not OK');
+      const data = await resp.json();
+      if (data.success) {
+        alert('驗收完成！資料已彙整上傳，此戶別將被鎖定。');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('上傳失敗，請確認後端連線狀況！');
+    }
+  };
+
+  if (!selection) {
+    return <ProjectSelector onSelectUnit={handleSelectUnit} />;
+  }
+
   if (!floorPlan) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white p-10 rounded-3xl shadow-xl border border-zinc-100 text-center"
-        >
-          <div className="w-20 h-20 bg-zinc-900 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-zinc-200">
-            <Home className="text-white" size={40} />
-          </div>
-          <h1 className="text-2xl font-bold text-zinc-900 mb-2">建築驗收系統</h1>
-          <p className="text-zinc-500 mb-8">請上傳建築平面圖作為底稿開始驗收</p>
-          
-          <label className="block w-full cursor-pointer group">
-            <div className="p-8 border-2 border-dashed border-zinc-200 rounded-2xl group-hover:border-zinc-900 group-hover:bg-zinc-50 transition-all">
-              <Upload className="mx-auto mb-4 text-zinc-400 group-hover:text-zinc-900 transition-colors" size={32} />
-              <span className="text-sm font-bold text-zinc-900">選擇平面圖檔案</span>
-              <p className="text-xs text-zinc-400 mt-1">支援 JPG, PNG, PDF 截圖</p>
-            </div>
-            <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
-          </label>
-        </motion.div>
+        <div className="text-zinc-500">載入平面圖中...</div>
       </div>
     );
   }
@@ -115,12 +172,17 @@ export default function App() {
       <nav className="h-16 bg-white border-b border-zinc-200 px-6 flex items-center justify-between sticky top-0 z-40 no-print">
         <div className="flex items-center gap-4">
           <button 
-            onClick={() => setFloorPlan(null)}
+            onClick={() => setSelection(null)}
             className="p-2 hover:bg-zinc-100 rounded-full transition-colors text-zinc-500"
           >
             <ChevronLeft size={20} />
           </button>
-          <h1 className="font-bold text-lg hidden sm:block">驗收進行中</h1>
+          <div>
+            <h1 className="font-bold text-sm leading-tight hidden sm:block">
+              {selection.building} - {selection.floor} - {selection.unitNum}
+            </h1>
+            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">驗收進行中</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 bg-zinc-100 p-1 rounded-xl">
@@ -145,6 +207,13 @@ export default function App() {
         <div className="flex items-center gap-3">
           {view === 'report' && (
             <>
+              <button
+                onClick={handleExportData}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-xl hover:bg-blue-700 transition-all shadow-md mr-4"
+              >
+                <UploadCloud size={18} />
+                <span className="hidden sm:inline">驗收完成</span>
+              </button>
               <button
                 onClick={() => handlePrint('floorplan')}
                 className="flex items-center gap-2 px-4 py-2 bg-white text-zinc-900 border border-zinc-200 text-sm font-bold rounded-xl hover:bg-zinc-50 transition-all shadow-sm"

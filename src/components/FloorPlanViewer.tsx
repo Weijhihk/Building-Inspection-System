@@ -219,8 +219,24 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
       )}
 
       {status === 'failed' && (
-        <div className="absolute inset-0 flex items-center justify-center text-red-500 bg-zinc-100 z-10">
-          底圖載入失敗，請重新上傳。
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-100 z-10 p-8 text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center mb-4">
+            <span className="text-red-500 font-bold text-2xl">!</span>
+          </div>
+          <h3 className="text-lg font-bold text-zinc-900 mb-2">找不到平面圖檔案</h3>
+          <p className="text-zinc-500 mb-4 max-w-md">
+            系統嘗試自動載入檔案：<br/>
+            <code className="bg-zinc-200 px-2 py-1 rounded text-zinc-800 font-mono text-sm mt-2 block select-all">
+              {imageUrl}
+            </code>
+          </p>
+          <div className="bg-white border border-zinc-200 p-4 rounded-xl text-sm text-left max-w-md w-full shadow-sm text-zinc-600">
+            <strong className="block text-zinc-900 mb-1">如何解決？</strong>
+            1. 請將該戶的平面圖檔案準備好 (JPG 格式)<br/>
+            2. 將檔名命名為上述紅字部分 (例如 KY85_A_2F_01.jpg)<br/>
+            3. 將該檔案放入專案的 <code className="bg-zinc-100 px-1 rounded">public/floorplans/</code> 資料夾中<br/>
+            4. 重新整理本網頁
+          </div>
         </div>
       )}
 

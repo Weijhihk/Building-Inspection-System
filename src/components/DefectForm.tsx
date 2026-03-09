@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Camera, Trash2 } from 'lucide-react';
-import { DefectItem, DefectCategory, Pin } from '../types';
-import { DEFAULT_DEFECT_ITEMS } from '../constants';
+import { DefectItem, Pin } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 const COMMON_AREAS = ['客廳', '餐廳', '廚房', '主臥室', '次臥室1', '次臥室2', '主浴', '次浴'];
@@ -14,15 +13,34 @@ interface DefectFormProps {
 
 const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
   const [defects, setDefects] = useState<DefectItem[]>(pin.defects);
-  const [activeCategory, setActiveCategory] = useState<DefectCategory>(DefectCategory.CEILING);
+  
+  const [defectSchema, setDefectSchema] = useState<Record<string, Record<string, string[]>>>({});
+  const [level1, setLevel1] = useState<string>('');
+  const [level2, setLevel2] = useState<string>('');
+  
   const [selectedArea, setSelectedArea] = useState<string>(COMMON_AREAS[0]);
   const [customItem, setCustomItem] = useState('');
 
-  const handleAddDefect = (name: string, category: DefectCategory) => {
+  useEffect(() => {
+    fetch('/Building-Inspection-System/defects.json')
+      .then(res => res.json())
+      .then(data => {
+        setDefectSchema(data);
+        const firstL1 = Object.keys(data)[0];
+        if (firstL1) {
+          setLevel1(firstL1);
+          const firstL2 = Object.keys(data[firstL1])[0];
+          if (firstL2) setLevel2(firstL2);
+        }
+      })
+      .catch(err => console.error('Failed to load defects schema', err));
+  }, []);
+
+  const handleAddDefect = (name: string, categoryCombined: string) => {
     const newDefect: DefectItem = {
       id: Math.random().toString(36).substr(2, 9),
       name,
-      category,
+      category: categoryCombined,
       description: '',
       area: selectedArea,
       photos: [],
@@ -122,35 +140,66 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
                 <h3 className="font-bold text-zinc-900">選擇缺失項目</h3>
               </div>
               
+              {/* Level 1: Main categories (Tian/Di/Qiang) */}
               <div className="flex gap-1 p-1 bg-zinc-100 rounded-xl mb-4">
-                {Object.values(DefectCategory).map(cat => (
+                {Object.keys(defectSchema).map(l1 => (
                   <button
-                    key={cat}
-                    onClick={() => setActiveCategory(cat)}
+                    key={l1}
+                    onClick={() => {
+                      setLevel1(l1);
+                      const subKeys = Object.keys(defectSchema[l1]);
+                      setLevel2(subKeys.length > 0 ? subKeys[0] : '');
+                    }}
                     className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-                      activeCategory === cat ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'
+                      level1 === l1 ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'
                     }`}
                   >
-                    {cat}
+                    {l1.split(' ')[0]} {/* Shorthand if name is "天 (天花)" -> "天" */}
                   </button>
                 ))}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
-                {DEFAULT_DEFECT_ITEMS[activeCategory].map(item => (
-                  <button
-                    key={item}
-                    onClick={() => handleAddDefect(item, activeCategory)}
-                    className={`p-3 text-sm font-medium border rounded-xl transition-all text-center ${
-                      defects.length > 0 && defects[0].name === item && defects[0].category === activeCategory
-                        ? 'bg-zinc-900 border-zinc-900 text-white shadow-md'
-                        : 'bg-white border-zinc-200 text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50'
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
+              {/* Level 2: Sub categories */}
+              {level1 && defectSchema[level1] && (
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {Object.keys(defectSchema[level1]).map(l2 => (
+                    <button
+                      key={l2}
+                      onClick={() => setLevel2(l2)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-full transition-all border ${
+                        level2 === l2 
+                          ? 'bg-zinc-800 border-zinc-800 text-white' 
+                          : 'bg-white border-zinc-200 text-zinc-500 hover:border-zinc-400'
+                      }`}
+                    >
+                      {l2}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Level 3: Specific Defect Items */}
+              {level1 && level2 && defectSchema[level1]?.[level2] && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+                  {defectSchema[level1][level2].map(item => {
+                    const combinedCat = `${level1} - ${level2}`;
+                    const isSelected = defects.length > 0 && defects[0].name === item && defects[0].category === combinedCat;
+                    return (
+                      <button
+                        key={item}
+                        onClick={() => handleAddDefect(item, combinedCat)}
+                        className={`p-3 text-sm font-medium border rounded-xl transition-all text-center ${
+                          isSelected
+                            ? 'bg-zinc-900 border-zinc-900 text-white shadow-md'
+                            : 'bg-white border-zinc-200 text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50'
+                        }`}
+                      >
+                        {item}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="flex gap-2 items-center">
                 <input
@@ -161,7 +210,8 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
                   className="flex-1 text-sm p-3 border border-zinc-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-zinc-900 bg-zinc-50/50"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && customItem) {
-                      handleAddDefect(customItem, activeCategory);
+                      const combinedCat = level1 && level2 ? `${level1} - ${level2}` : '自訂類別';
+                      handleAddDefect(customItem, combinedCat);
                       setCustomItem('');
                     }
                   }}
@@ -169,7 +219,8 @@ const DefectForm: React.FC<DefectFormProps> = ({ pin, onClose, onSave }) => {
                 <button
                   onClick={() => {
                     if (customItem) {
-                      handleAddDefect(customItem, activeCategory);
+                      const combinedCat = level1 && level2 ? `${level1} - ${level2}` : '自訂類別';
+                      handleAddDefect(customItem, combinedCat);
                       setCustomItem('');
                     }
                   }}
