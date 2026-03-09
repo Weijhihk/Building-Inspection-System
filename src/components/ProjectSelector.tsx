@@ -9,9 +9,10 @@ interface Project {
 
 interface ProjectSelectorProps {
   onSelectUnit: (projectId: string, building: string, floor: string, unitNum: string) => void;
+  token?: string | null;
 }
 
-export default function ProjectSelector({ onSelectUnit }: ProjectSelectorProps) {
+export default function ProjectSelector({ onSelectUnit, token }: ProjectSelectorProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [step, setStep] = useState<number>(0); // 0: Project, 1: Building, 2: Grid Selection
   
@@ -22,11 +23,13 @@ export default function ProjectSelector({ onSelectUnit }: ProjectSelectorProps) 
   const [defectCounts, setDefectCounts] = useState<Record<string, { defectCount: number, isInspected: boolean, unitId: string }>>({});
 
   useEffect(() => {
-    fetch('/api/projects')
+    fetch('/api/projects', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(res => res.json())
       .then(data => setProjects(data))
       .catch(err => console.error('Failed to load projects', err));
-  }, []);
+  }, [token]);
 
   const resetToStep = (s: number) => {
     setStep(s);
@@ -140,7 +143,9 @@ export default function ProjectSelector({ onSelectUnit }: ProjectSelectorProps) 
                         // Fetch status exactly when advancing to step 2
                         if (selectedProject) {
                           try {
-                            const res = await fetch(`/api/projects/${selectedProject.id}/${b}/units-status`);
+                            const res = await fetch(`/api/projects/${selectedProject.id}/${b}/units-status`, {
+                              headers: { 'Authorization': `Bearer ${token}` }
+                            });
                             const counts = await res.json();
                             setDefectCounts(counts);
                           } catch (err) {

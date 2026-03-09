@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import cors from 'cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dbPath = join(__dirname, 'database.sqlite');
@@ -78,6 +79,14 @@ db.exec(`
     photos_base64 TEXT,
     exported_at INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT,
+    name TEXT
+  );
 `);
 
 // --- Migrations ---
@@ -96,6 +105,15 @@ db.prepare("DELETE FROM units WHERE project_id IN ('p1', 'p2')").run();
 // (pins and defects can cascade or be orphaned harmlessly since they are local sqlite, but let's delete them properly)
 db.prepare("DELETE FROM pins WHERE unit_id IN (SELECT id FROM units WHERE project_id IN ('p1', 'p2'))").run();
 db.prepare("PRAGMA foreign_keys = ON").run();
+
+// --- Seed Users ---
+function hashPassword(password) {
+  return crypto.createHash('sha256').update(password + 'inspection_salt').digest('hex');
+}
+
+const userSeed = db.prepare('INSERT OR IGNORE INTO users (id, username, password, role, name) VALUES (?, ?, ?, ?, ?)');
+userSeed.run('u1', 'admin', hashPassword('admin123'), 'admin', '管理員');
+userSeed.run('u2', 'user', hashPassword('user123'), 'user', '第一現場巡檢員');
 
 // Seed default projects if they don't exist
 const seedStmt = db.prepare('INSERT OR IGNORE INTO projects (id, name) VALUES (?, ?)');
@@ -300,6 +318,136 @@ app.post('/api/admin/toggle-inspection', (req, res) => {
   
   db.prepare('UPDATE units SET is_inspected = ? WHERE id = ?').run(status, unitId);
   res.json({ success: true, unitId, status });
+});
+
+// 9. Auth Routes
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  
+  if (!user || user.password !== hashPassword(password)) {
+    return res.status(401).json({ error: '帳號或密碼錯誤' });
+  }
+  
+  // Return a simple mock token for now
+  const token = Buffer.from(JSON.stringify({ id: user.id, role: user.role, name: user.name })).toString('base64');
+  
+  res.json({
+    success: true,
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      name: user.name,
+      role: user.role
+    }
+  });
+});
+
+app.get('/api/me', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+  
+  try {
+    const token = authHeader.split(' ')[1];
+    const user = JSON.parse(Buffer.from(token, 'base64').toString());
+    res.json(user);
+  } catch (e) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+// 10. Admin User Management APIs
+app.get('/api/admin/users', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+  
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+    
+    const users = db.prepare('SELECT id, username, role, name FROM users').all();
+    console.log(`[Admin] Fetched ${users.length} users`);
+    res.json(users);
+  } catch (e) {
+    console.error('[Admin] Fetch users error:', e);
+    res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+app.post('/api/admin/users', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { username, password, role, name } = req.body;
+  console.log('[Admin] Create user request:', { username, role, name });
+
+  if (!username || !password || !role || !name) {
+    return res.status(400).json({ error: 'Missing fields' });
+  }
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const id = 'u_' + Math.random().toString(36).substr(2, 9);
+    db.prepare('INSERT INTO users (id, username, password, role, name) VALUES (?, ?, ?, ?, ?)')
+      .run(id, username, hashPassword(password), role, name);
+    
+    console.log(`[Admin] User created: ${username} (ID: ${id})`);
+    res.json({ success: true, id });
+  } catch (e) {
+    console.error('[Admin] Create user error:', e);
+    if (e.message.includes('UNIQUE')) {
+      return res.status(400).json({ error: '帳號已存在' });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/admin/users/:id', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+  const { username, password, role, name } = req.body;
+  console.log(`[Admin] Update user request for ID ${id}:`, { username, role, name });
+  
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    if (password && password.trim() !== '') {
+      db.prepare('UPDATE users SET username = ?, password = ?, role = ?, name = ? WHERE id = ?')
+        .run(username, hashPassword(password), role, name, id);
+    } else {
+      db.prepare('UPDATE users SET username = ?, role = ?, name = ? WHERE id = ?')
+        .run(username, role, name, id);
+    }
+    console.log(`[Admin] User updated: ${id}`);
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Admin] Update user error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/admin/users/:id', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+  if (id === 'u1') return res.status(400).json({ error: '不能刪除超級管理員' });
+  
+  try {
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(port, () => {
