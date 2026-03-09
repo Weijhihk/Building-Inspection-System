@@ -19,9 +19,9 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode }) =>
       {/* Floor Plan with Pins */}
       {(printMode === 'all' || printMode === 'floorplan') && (
         <section className={`mb-16 ${printMode === 'floorplan' ? 'print:block' : ''}`}>
-          <h2 className="text-xl font-bold mb-6 border-b-2 border-zinc-900 pb-2">缺失平面圖</h2>
-          <div className="relative border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 print:border-none">
-            <img src={imageUrl} alt="Floor Plan" className="w-full h-auto" />
+          <h2 className="text-xl font-bold mb-6 border-b-2 border-zinc-900 pb-2 print:text-base print:mb-4">缺失平面圖</h2>
+          <div className="relative border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 print:border-none print:flex print:items-center print:justify-center">
+            <img src={imageUrl} alt="Floor Plan" className="w-full h-auto print:max-h-[85vh] print:w-auto print:object-contain" />
             {pins.map((pin, idx) => (
               <div
                 key={pin.id}
