@@ -112,8 +112,8 @@ function hashPassword(password) {
 }
 
 const userSeed = db.prepare('INSERT OR IGNORE INTO users (id, username, password, role, name) VALUES (?, ?, ?, ?, ?)');
-userSeed.run('u1', 'admin', hashPassword('admin123'), 'admin', '管理員');
-userSeed.run('u2', 'user', hashPassword('user123'), 'user', '第一現場巡檢員');
+userSeed.run('u1', 'admin', hashPassword('ky85_admin_2026'), 'admin', '管理員');
+userSeed.run('u2', 'user', hashPassword('ky85_user_2026'), 'user', '第一現場巡檢員');
 
 // Seed default projects if they don't exist
 const seedStmt = db.prepare('INSERT OR IGNORE INTO projects (id, name) VALUES (?, ?)');
@@ -446,6 +446,127 @@ app.delete('/api/admin/users/:id', (req, res) => {
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
     res.json({ success: true });
   } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 11. Admin Defect Management APIs
+app.delete('/api/admin/defects/:id', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+  
+  const performDelete = db.transaction(() => {
+    // Delete associated photos first
+    db.prepare('DELETE FROM defect_photos WHERE defect_id = ?').run(id);
+    // Delete associated export record
+    db.prepare('DELETE FROM exported_defects WHERE defect_id = ?').run(id);
+    // Delete the defect
+    db.prepare('DELETE FROM defects WHERE id = ?').run(id);
+    // Clean up pins that have no defects left
+    db.prepare(`
+      DELETE FROM pins 
+      WHERE id NOT IN (SELECT pin_id FROM defects)
+    `).run();
+  });
+
+  try {
+    performDelete();
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[Admin] Delete defect error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/admin/units/:unitId/defects', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { unitId } = req.params;
+  console.log(`[Admin] Attempting to clear hazards for UnitID: ${unitId}`);
+  
+  let stats = { exported: 0, pins: 0, defects: 0, photos: 0 };
+
+  const performClear = db.transaction(() => {
+    // 0. Get unit details to clear exported_defects accurately
+    const unit = db.prepare('SELECT project_id, building, floor, unit_number FROM units WHERE id = ?').get(unitId);
+    if (unit) {
+      const deleteExport = db.prepare(`
+        DELETE FROM exported_defects 
+        WHERE project_id = ? AND building = ? AND floor = ? AND unit_number = ?
+      `).run(unit.project_id, unit.building, unit.floor, unit.unit_number);
+      stats.exported = deleteExport.changes;
+    }
+
+    // 1. Find all pins for this unit
+    const pins = db.prepare('SELECT id FROM pins WHERE unit_id = ?').all(unitId);
+    stats.pins = pins.length;
+
+    for (const p of pins) {
+      // 2. Find and delete defects and photos
+      const defects = db.prepare('SELECT id FROM defects WHERE pin_id = ?').all(p.id);
+      stats.defects += defects.length;
+
+      for (const d of defects) {
+        const delPhotos = db.prepare('DELETE FROM defect_photos WHERE defect_id = ?').run(d.id);
+        stats.photos += delPhotos.changes;
+      }
+      db.prepare('DELETE FROM defects WHERE pin_id = ?').run(p.id);
+    }
+    // 3. Delete pins
+    db.prepare('DELETE FROM pins WHERE unit_id = ?').run(unitId);
+    // 4. Reset unit inspection status
+    db.prepare('UPDATE units SET is_inspected = 0 WHERE id = ?').run(unitId);
+  });
+
+  try {
+    performClear();
+    console.log(`[Admin] Clear complete for ${unitId}:`, stats);
+    res.json({ success: true, stats });
+  } catch (e) {
+    console.error('[Admin] Clear unit defects error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 12. Admin Project-wide Defect Export API
+app.get('/api/admin/projects/:projectId/defects', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { projectId } = req.params;
+  
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    // Aggregated query for all defects in a project
+    const rows = db.prepare(`
+      SELECT 
+        u.building, u.floor, u.unit_number,
+        p.id as pin_id, p.x, p.y,
+        d.id as defect_id, d.category, d.name, d.area, d.description, d.status
+      FROM units u
+      JOIN pins p ON u.id = p.unit_id
+      JOIN defects d ON p.id = d.pin_id
+      WHERE u.project_id = ?
+    `).all(projectId);
+
+    // Fetch photos for each defect
+    const defects = rows.map(row => {
+      const photos = db.prepare('SELECT photo_data FROM defect_photos WHERE defect_id = ?').all(row.defect_id);
+      return {
+        ...row,
+        photos: photos.map(ph => ph.photo_data)
+      };
+    });
+
+    res.json(defects);
+  } catch (e) {
+    console.error('[Admin] Project defects error:', e);
     res.status(500).json({ error: e.message });
   }
 });
