@@ -22,7 +22,12 @@ const db = new Database(dbPath, { verbose: console.log });
 db.exec(`
   CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    has_buildings INTEGER DEFAULT 1,
+    buildings TEXT DEFAULT '["A棟", "B棟"]',
+    floors TEXT DEFAULT '["2F", "3F", "4F", "5F", "6F", "7F", "8F", "9F", "10F"]',
+    units TEXT DEFAULT '["1戶", "2戶", "3戶", "4戶", "5戶", "6戶"]',
+    common_spaces TEXT DEFAULT '[]'
   );
 
   CREATE TABLE IF NOT EXISTS units (
@@ -96,6 +101,21 @@ if (!hasIsInspected) {
   db.prepare("ALTER TABLE units ADD COLUMN is_inspected INTEGER DEFAULT 0").run();
   console.log("[Migration] Added is_inspected column to units table.");
 }
+
+const projectsTableInfo = db.prepare("PRAGMA table_info(projects)").all();
+const hasBuildingsCol = projectsTableInfo.some(col => col.name === 'has_buildings');
+if (!hasBuildingsCol) {
+  try {
+    db.prepare("ALTER TABLE projects ADD COLUMN has_buildings INTEGER DEFAULT 1").run();
+    db.prepare("ALTER TABLE projects ADD COLUMN buildings TEXT DEFAULT '[\"A棟\", \"B棟\"]'").run();
+    db.prepare("ALTER TABLE projects ADD COLUMN floors TEXT DEFAULT '[\"2F\", \"3F\", \"4F\", \"5F\", \"6F\", \"7F\", \"8F\", \"9F\", \"10F\"]'").run();
+    db.prepare("ALTER TABLE projects ADD COLUMN units TEXT DEFAULT '[\"1戶\", \"2戶\", \"3戶\", \"4戶\", \"5戶\", \"6戶\"]'").run();
+    db.prepare("ALTER TABLE projects ADD COLUMN common_spaces TEXT DEFAULT '[]'").run();
+    console.log("[Migration] Added dynamic configuration columns to projects table.");
+  } catch (err) {
+    console.error("[Migration] Failed to add columns to projects:", err);
+  }
+}
 // ------------------
 
 // Clean up old arbitrary projects if they exist (Handle Foreign Keys)
@@ -133,7 +153,16 @@ function ensureUnitExists(projectId, building, floor, unitNumber) {
 // 1. Get all projects
 app.get('/api/projects', (req, res) => {
   const projects = db.prepare('SELECT * FROM projects').all();
-  res.json(projects);
+  // Parse JSON strings back to arrays
+  const parsedProjects = projects.map(p => ({
+    ...p,
+    has_buildings: p.has_buildings === 1,
+    buildings: JSON.parse(p.buildings || '[]'),
+    floors: JSON.parse(p.floors || '[]'),
+    units: JSON.parse(p.units || '[]'),
+    common_spaces: JSON.parse(p.common_spaces || '[]')
+  }));
+  res.json(parsedProjects);
 });
 
 // 2. Get or Create a specific unit and fetch its floor plan
@@ -318,6 +347,113 @@ app.post('/api/admin/toggle-inspection', (req, res) => {
   
   db.prepare('UPDATE units SET is_inspected = ? WHERE id = ?').run(status, unitId);
   res.json({ success: true, unitId, status });
+});
+
+// Admin Project Management APIs
+app.post('/api/admin/projects', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id, name, has_buildings, buildings, floors, units, common_spaces } = req.body;
+  if (!id || !name) return res.status(400).json({ error: 'Project ID and Name are required' });
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    db.prepare(`
+      INSERT INTO projects (id, name, has_buildings, buildings, floors, units, common_spaces) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, name, 
+      has_buildings ? 1 : 0, 
+      JSON.stringify(buildings || []), 
+      JSON.stringify(floors || []), 
+      JSON.stringify(units || []), 
+      JSON.stringify(common_spaces || [])
+    );
+    res.json({ success: true, id });
+  } catch (e) {
+    console.error('Create project error:', e);
+    if (e.message.includes('UNIQUE')) {
+      return res.status(400).json({ error: '專案編號已存在' });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/admin/projects/:id', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+  const { name, has_buildings, buildings, floors, units, common_spaces } = req.body;
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    db.prepare(`
+      UPDATE projects 
+      SET name = ?, has_buildings = ?, buildings = ?, floors = ?, units = ?, common_spaces = ?
+      WHERE id = ?
+    `).run(
+      name, 
+      has_buildings ? 1 : 0, 
+      JSON.stringify(buildings || []), 
+      JSON.stringify(floors || []), 
+      JSON.stringify(units || []), 
+      JSON.stringify(common_spaces || []),
+      id
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Update project error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/admin/projects/:id', (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { id } = req.params;
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const userRole = JSON.parse(Buffer.from(token, 'base64').toString()).role;
+    if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
+
+    const performDelete = db.transaction(() => {
+      // Find all units for this project
+      const units = db.prepare('SELECT id FROM units WHERE project_id = ?').all(id);
+      
+      for (const u of units) {
+        // Find pins
+        const pins = db.prepare('SELECT id FROM pins WHERE unit_id = ?').all(u.id);
+        for (const p of pins) {
+          const defects = db.prepare('SELECT id FROM defects WHERE pin_id = ?').all(p.id);
+          for (const d of defects) {
+            db.prepare('DELETE FROM defect_photos WHERE defect_id = ?').run(d.id);
+          }
+          db.prepare('DELETE FROM defects WHERE pin_id = ?').run(p.id);
+        }
+        db.prepare('DELETE FROM pins WHERE unit_id = ?').run(u.id);
+      }
+      
+      db.prepare('DELETE FROM exported_defects WHERE project_id = ?').run(id);
+      db.prepare('DELETE FROM units WHERE project_id = ?').run(id);
+      db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    });
+
+    performDelete();
+    res.json({ success: true });
+  } catch (e) {
+    console.error('Delete project error:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 9. Auth Routes

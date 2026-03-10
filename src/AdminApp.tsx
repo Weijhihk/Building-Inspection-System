@@ -6,6 +6,11 @@ import { motion, AnimatePresence } from 'motion/react';
 interface Project {
   id: string;
   name: string;
+  has_buildings: boolean;
+  buildings: string[];
+  floors: string[];
+  units: string[];
+  common_spaces: string[];
 }
 
 export default function AdminApp() {
@@ -17,10 +22,13 @@ export default function AdminApp() {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('A棟');
   const [defectCounts, setDefectCounts] = useState<Record<string, { defectCount: number, isInspected: boolean, unitId: string }>>({});
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'projects'>('dashboard');
   const [users, setUsers] = useState<any[]>([]);
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+
+  const [showProjectModal, setShowProjectModal] = useState<boolean>(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   
   const [showDefectModal, setShowDefectModal] = useState(false);
   const [activeUnitDefects, setActiveUnitDefects] = useState<any[]>([]);
@@ -31,9 +39,16 @@ export default function AdminApp() {
   const [projectDefects, setProjectDefects] = useState<any[]>([]);
   const [sortBy, setSortBy] = useState<'floor' | 'unit' | 'category'>('floor');
 
-  const BUILDINGS = ['A棟', 'B棟'];
-  const FLOORS = Array.from({ length: 9 }, (_, i) => `${i + 2}F`);
-  const UNITS = Array.from({ length: 6 }, (_, i) => `${i + 1}戶`);
+  const getActiveBuildings = () => {
+    if (!selectedProject) return [];
+    if (!selectedProject.has_buildings) return ['無分棟'];
+    return selectedProject.buildings || [];
+  };
+  const getActiveFloors = () => selectedProject?.floors || [];
+  const getActiveColumns = () => {
+    if (!selectedProject) return [];
+    return [...(selectedProject.units || []), ...(selectedProject.common_spaces || [])];
+  };
 
   const handleLogin = (newToken: string, newUser: any) => {
     setToken(newToken);
@@ -49,15 +64,22 @@ export default function AdminApp() {
     localStorage.removeItem('inspect_user');
   };
 
+  const fetchProjects = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/projects', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      setProjects(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (!user || user.role !== 'admin' || !token) return;
-    fetch('/api/projects', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => setProjects(data))
-      .catch(err => console.error(err));
-      
+    fetchProjects();
     fetchUsers();
   }, [user, token]);
 
@@ -79,6 +101,17 @@ export default function AdminApp() {
       fetchData();
     }
   }, [selectedProject, selectedBuilding, token]);
+
+  // Adjust selected building if project changes
+  useEffect(() => {
+    if (selectedProject) {
+      const buildings = getActiveBuildings();
+      if (!buildings.includes(selectedBuilding) && buildings.length > 0) {
+        setSelectedBuilding(buildings[0]);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject]);
 
   const fetchData = async () => {
     if (!selectedProject || !token) return;
@@ -164,6 +197,69 @@ export default function AdminApp() {
       });
       if (res.ok) fetchUsers();
       else {
+        const data = await res.json();
+        alert(data.error || '刪除失敗');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSaveProject = async (projectData: any) => {
+    try {
+      const url = editingProject ? `/api/admin/projects/${editingProject.id}` : '/api/admin/projects';
+      const method = editingProject ? 'PUT' : 'POST';
+      
+      const payload = {
+        id: projectData.id,
+        name: projectData.name,
+        has_buildings: projectData.has_buildings === 'true',
+        buildings: projectData.buildings.split(',').map((s: string) => s.trim()).filter(Boolean),
+        floors: projectData.floors.split(',').map((s: string) => s.trim()).filter(Boolean),
+        units: projectData.units.split(',').map((s: string) => s.trim()).filter(Boolean),
+        common_spaces: projectData.common_spaces.split(',').map((s: string) => s.trim()).filter(Boolean),
+      };
+
+      const res = await fetch(url, {
+        method,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      if (res.ok) {
+        setShowProjectModal(false);
+        setEditingProject(null);
+        fetchProjects();
+        if (selectedProject?.id === projectData.id) {
+          // Refresh selected project details
+          const updated = await fetch('/api/projects', { headers: { 'Authorization': `Bearer ${token}` } }).then(r => r.json());
+          setSelectedProject(updated.find((p: Project) => p.id === projectData.id) || null);
+        }
+      } else {
+        const data = await res.json();
+        alert(`儲存失敗: ${data.error || '未知錯誤'}`);
+      }
+    } catch (err) {
+      console.error('Save error:', err);
+      alert(`系統錯誤: ${err instanceof Error ? err.message : '連線失敗'}`);
+    }
+  };
+
+  const handleDeleteProject = async (id: string, name: string) => {
+    if (!window.confirm(`警告：這將會刪除專案「${name}」的所有資料（包含戶別、缺失、照片等），確定要刪除嗎？`)) return;
+    
+    try {
+      const res = await fetch(`/api/admin/projects/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchProjects();
+        if (selectedProject?.id === id) setSelectedProject(null);
+      } else {
         const data = await res.json();
         alert(data.error || '刪除失敗');
       }
@@ -335,6 +431,15 @@ export default function AdminApp() {
             <Users size={18} />
             <span className="font-bold text-sm">帳號管理</span>
           </button>
+          <button
+            onClick={() => setActiveTab('projects')}
+            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${
+              activeTab === 'projects' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800/50 text-slate-400'
+            }`}
+          >
+            <Layers size={18} />
+            <span className="font-bold text-sm">專案管理</span>
+          </button>
         </nav>
 
         {activeTab === 'dashboard' && (
@@ -448,6 +553,81 @@ export default function AdminApp() {
               </table>
             </div>
           </motion.div>
+        ) : activeTab === 'projects' ? (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
+            <div className="flex items-center justify-between mb-8">
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900 mb-2">專案管理</h2>
+                <p className="text-slate-500">設定各專案的樓層、戶別與公共空間</p>
+              </div>
+              <button 
+                onClick={() => { setEditingProject(null); setShowProjectModal(true); }}
+                className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg transition-all"
+              >
+                <Building2 size={20} />
+                <span>新增專案</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {projects.map(p => (
+                <div key={p.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900 mb-1">[{p.id}] {p.name}</h3>
+                      <p className="text-sm text-slate-500">{p.has_buildings ? '有分棟' : '無分棟'}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => { setEditingProject(p); setShowProjectModal(true); }}
+                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteProject(p.id, p.name)}
+                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-3 flex-1">
+                    {p.has_buildings && (
+                      <div>
+                        <span className="text-xs font-bold text-slate-400 block mb-1">棟別</span>
+                        <div className="flex flex-wrap gap-1">
+                          {p.buildings?.map(b => (
+                            <span key={b} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs">{b}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-xs font-bold text-slate-400 block mb-1">樓層 (共 {p.floors?.length} 層)</span>
+                      <div className="text-sm text-slate-700 max-h-12 overflow-hidden text-ellipsis line-clamp-2">
+                        {p.floors?.join(', ')}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-400 block mb-1">戶別 / 區域 (共 {(p.units?.length || 0) + (p.common_spaces?.length || 0)} 區)</span>
+                      <div className="flex flex-wrap gap-1">
+                        {p.units?.map(u => <span key={u} className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs">{u}</span>)}
+                        {p.common_spaces?.map(c => <span key={c} className="bg-amber-50 text-amber-600 px-2 py-0.5 rounded text-xs">{c}</span>)}
+                        {(!p.units?.length && !p.common_spaces?.length) && <span className="text-xs text-slate-400 italic">尚未設定</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {projects.length === 0 && (
+                <div className="col-span-1 md:col-span-2 text-center py-20 text-slate-400">
+                  <Building2 size={48} className="mx-auto mb-4 opacity-20" />
+                  <p className="font-bold">目前無任何專案，請新增專案</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
         ) : (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
             {/* Dashboard Content */}
@@ -456,12 +636,12 @@ export default function AdminApp() {
                 <h2 className="text-3xl font-bold text-slate-900 mb-2">{selectedProject?.name || '請選擇專案'}</h2>
                 <p className="text-slate-500">網格狀態實時監控與鎖定管理</p>
               </div>
-              <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
-                {BUILDINGS.map(b => (
+              <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200 overflow-x-auto max-w-full">
+                {getActiveBuildings().map(b => (
                   <button
                     key={b}
                     onClick={() => setSelectedBuilding(b)}
-                    className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${
+                    className={`px-6 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${
                       selectedBuilding === b ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
                     }`}
                   >
@@ -483,17 +663,17 @@ export default function AdminApp() {
                 <table className="w-full text-center border-collapse min-w-[800px]">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="py-4 px-4 font-bold text-slate-500 border-r border-slate-200 w-24">樓層 \\ 戶別</th>
-                      {UNITS.map(u => (
-                        <th key={u} className="py-4 px-2 font-bold text-slate-900">{u}</th>
+                      <th className="py-4 px-4 font-bold text-slate-500 border-r border-slate-200 w-24 sticky left-0 bg-slate-50 z-10">樓層 \\ 戶別</th>
+                      {getActiveColumns().map((u: string) => (
+                        <th key={u} className="py-4 px-2 font-bold text-slate-900 min-w-[80px]">{u}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {[...FLOORS].reverse().map((f) => (
+                    {[...getActiveFloors()].reverse().map((f: string) => (
                       <tr key={f} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="py-4 px-4 font-bold text-slate-900 border-r border-slate-200 bg-slate-50">{f}</td>
-                        {UNITS.map(u => {
+                        <td className="py-4 px-4 font-bold text-slate-900 border-r border-slate-200 bg-slate-50 sticky left-0 z-10">{f}</td>
+                        {getActiveColumns().map((u: string) => {
                           const key = `${f}-${u}`;
                           const status = defectCounts[key];
                           return (
@@ -624,6 +804,101 @@ export default function AdminApp() {
                 <div className="flex gap-3">
                   <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 py-3 font-bold text-slate-600 hover:bg-slate-50 rounded-xl">取消</button>
                   <button type="submit" className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 shadow-lg">儲存帳號</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Project Modal */}
+      <AnimatePresence>
+        {showProjectModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }}
+              onClick={() => setShowProjectModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+                    <Building2 size={20} />
+                  </div>
+                  <h3 className="font-bold text-xl">{editingProject ? '編輯專案設定' : '新增專案'}</h3>
+                </div>
+                <button onClick={() => setShowProjectModal(false)} className="p-2 hover:bg-white/10 rounded-lg">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form className="flex-1 overflow-y-auto" onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                handleSaveProject(Object.fromEntries(formData));
+              }}>
+                <div className="p-8 space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">專案編號 (ID)</label>
+                      <input name="id" defaultValue={editingProject?.id} readOnly={!!editingProject} required className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none read-only:bg-slate-100 read-only:text-slate-400" placeholder="例如：KY85" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase mb-1.5 block">專案名稱</label>
+                      <input name="name" defaultValue={editingProject?.name} required className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none" placeholder="例如：國揚數位案" />
+                    </div>
+                  </div>
+                  
+                  <div className="border-t border-slate-100 pt-6">
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-3 block">網格基礎參數 (以半形逗點 , 分隔)</label>
+                    
+                    <div className="space-y-4">
+                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                        <div className="flex items-center gap-4 mb-3">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="has_buildings" value="true" defaultChecked={editingProject ? editingProject.has_buildings : true} className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-bold text-slate-700">有分棟</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="has_buildings" value="false" defaultChecked={editingProject ? !editingProject.has_buildings : false} className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-bold text-slate-700">無分棟 (單棟)</span>
+                          </label>
+                        </div>
+                        <input name="buildings" defaultValue={editingProject?.buildings?.join(', ') || 'A棟, B棟'} className="w-full px-4 py-2 bg-white rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-600" placeholder="A棟, B棟, C棟..." />
+                        <p className="text-[10px] text-slate-400 mt-1">若選擇「無分棟」，仍可留空，系統將自動以「無分棟」處理。</p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 mb-1 block">樓層列表</label>
+                        <textarea name="floors" defaultValue={editingProject?.floors?.join(', ') || '2F, 3F, 4F, 5F, 6F, 7F, 8F, 9F, 10F'} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none text-sm min-h-[80px]" placeholder="1F, 2F, 3F..."></textarea>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1 block">戶別列表</label>
+                          <textarea name="units" defaultValue={editingProject?.units?.join(', ') || '1戶, 2戶, 3戶, 4戶, 5戶, 6戶'} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none text-sm min-h-[80px]" placeholder="1戶, 2戶, 3戶..."></textarea>
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1 block">同層公共空間</label>
+                          <textarea name="common_spaces" defaultValue={editingProject?.common_spaces?.join(', ') || ''} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none text-sm min-h-[80px]" placeholder="梯間, 機房, 公設..."></textarea>
+                          <p className="text-[10px] text-slate-400 mt-1">公設區也會被視為驗收對象與戶別並排顯示</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-slate-50 border-t border-slate-200 flex gap-3 shrink-0">
+                  <button type="button" onClick={() => setShowProjectModal(false)} className="flex-1 py-3 font-bold text-slate-600 hover:bg-white border border-transparent hover:border-slate-200 rounded-xl transition-all">取消</button>
+                  <button type="submit" className="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 shadow-lg">儲存設定</button>
                 </div>
               </form>
             </motion.div>

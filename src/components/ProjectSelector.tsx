@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Building2, ChevronRight, Layers, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-interface Project {
-  id: string;
-  name: string;
-}
+import { Project } from '../types';
 
 interface ProjectSelectorProps {
   onSelectUnit: (projectId: string, building: string, floor: string, unitNum: string) => void;
@@ -38,9 +35,32 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
     if (s <= 2) { setSelectedFloor(''); setSelectedUnit(''); }
   };
 
-  const BUILDINGS = ['A棟', 'B棟'];
-  const FLOORS = Array.from({ length: 9 }, (_, i) => `${i + 2}F`); // 2F to 10F
-  const UNITS = Array.from({ length: 6 }, (_, i) => `${i + 1}戶`); // 1戶 to 6戶
+  const getActiveBuildings = () => selectedProject?.buildings || [];
+  const getActiveFloors = () => selectedProject?.floors || [];
+  const getActiveColumns = () => {
+    if (!selectedProject) return [];
+    return [...(selectedProject.units || []), ...(selectedProject.common_spaces || [])];
+  };
+
+  const handleProjectSelect = async (p: Project) => {
+    setSelectedProject(p);
+    if (p.has_buildings && p.buildings && p.buildings.length > 0) {
+      setStep(1);
+    } else {
+      setSelectedBuilding('無分棟'); 
+      setStep(2);
+      // Fetch status for the single '無分棟' building
+      try {
+        const res = await fetch(`/api/projects/${p.id}/%E7%84%A1%E5%88%86%E6%A3%9F/units-status`, { // %E7%84%A1%E5%88%86%E6%A3%9F = 無分棟
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const counts = await res.json();
+        setDefectCounts(counts);
+      } catch (err) {
+        console.error('Failed to fetch defect counts', err);
+      }
+    }
+  };
 
   const handleGridSelect = (f: string, u: string) => {
     setSelectedFloor(f);
@@ -106,7 +126,7 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
                   {projects.map(p => (
                     <button
                       key={p.id}
-                      onClick={() => { setSelectedProject(p); setStep(1); }}
+                      onClick={() => handleProjectSelect(p)}
                       className="p-8 text-left border-2 border-zinc-100 rounded-2xl hover:border-zinc-900 hover:shadow-lg transition-all group"
                     >
                       <Layers className="text-zinc-400 group-hover:text-zinc-900 mb-4 transition-colors" size={32} />
@@ -134,7 +154,7 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
                   <div className="col-span-2 mb-4 text-center">
                     <h2 className="text-lg font-bold">選擇棟別</h2>
                   </div>
-                  {BUILDINGS.map(b => (
+                  {getActiveBuildings().map((b: string) => (
                     <button
                       key={b}
                       onClick={async () => { 
@@ -181,17 +201,17 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
                     <table className="w-full text-center border-collapse">
                       <thead>
                         <tr className="bg-zinc-50 border-b border-zinc-200">
-                          <th className="py-4 px-2 font-bold text-zinc-500 border-r border-zinc-200 w-24">樓層 \\ 戶號</th>
-                          {UNITS.map(u => (
+                          <th className="py-4 px-2 font-bold text-zinc-500 border-r border-zinc-200 w-24">樓層 \\ 戶號/區域</th>
+                          {getActiveColumns().map((u: string) => (
                             <th key={u} className="py-4 px-2 font-bold text-zinc-900">{u}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {[...FLOORS].reverse().map((f) => ( // Reverse so 10F is at the top conceptually
+                        {[...getActiveFloors()].reverse().map((f: string) => ( // Reverse so top floor is conceptually on top
                           <tr key={f} className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors group">
                             <td className="py-3 px-2 font-bold text-zinc-900 border-r border-zinc-200 bg-zinc-50 group-hover:bg-zinc-100">{f}</td>
-                            {UNITS.map(u => {
+                            {getActiveColumns().map((u: string) => {
                               const key = `${f}-${u}`;
                               const status = defectCounts[key];
                               
@@ -246,7 +266,13 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
           {step > 0 && (
             <div className="mt-8 pt-6 border-t border-zinc-100 flex items-center justify-between">
               <button 
-                onClick={() => setStep(s => s - 1)}
+                onClick={() => {
+                  if (step === 2 && selectedProject && !selectedProject.has_buildings) {
+                    resetToStep(0); // If no buildings step, Go straight back to project list
+                  } else {
+                    setStep(s => s - 1);
+                  }
+                }}
                 className="flex items-center gap-2 px-6 py-3 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 rounded-xl font-bold transition-all"
               >
                 <ArrowLeft size={18} />

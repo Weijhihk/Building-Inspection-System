@@ -22,3 +22,14 @@ export interface InspectionProject {
   floorPlanUrl: string | null;
   pins: Pin[];
 }
+
+export interface Project {
+  id: string;
+  name: string;
+  has_buildings: boolean;
+  buildings: string[];
+  floors: string[];
+  units: string[];
+  common_spaces: string[];
+}
+

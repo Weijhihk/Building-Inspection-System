@@ -320,7 +320,14 @@ export default function App() {
                     exit={{ opacity: 0, y: -20 }}
                     className="absolute inset-0 overflow-y-auto bg-white"
                   >
-                    <ReportView imageUrl={floorPlan} pins={pins} printMode={printMode} />
+                    <ReportView 
+                      imageUrl={floorPlan} 
+                      pins={pins} 
+                      printMode={printMode}
+                      building={selection.building}
+                      floor={selection.floor}
+                      unit={selection.unitNum}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>

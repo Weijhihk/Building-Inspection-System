@@ -6,14 +6,22 @@ interface ReportViewProps {
   imageUrl: string;
   pins: Pin[];
   printMode: 'all' | 'floorplan' | 'table';
+  building?: string;
+  floor?: string;
+  unit?: string;
 }
 
-const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode }) => {
+const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, building, floor, unit }) => {
   return (
     <div className="bg-white p-8 max-w-5xl mx-auto print:p-0 print:max-w-none print:w-full">
-      <div className="text-center mb-8 print:mb-6">
+      <div className="text-center mb-8 print:mb-6 relative">
         <h1 className="text-3xl font-bold mb-2 print:text-2xl">建築驗收缺失報告</h1>
         <p className="text-zinc-500 text-sm">產出日期: {format(new Date(), 'yyyy/MM/dd HH:mm')}</p>
+        {(building || floor || unit) && (
+          <div className="absolute top-0 right-0 text-right print:text-sm">
+            <span className="font-bold">{building} {floor} {unit}</span>
+          </div>
+        )}
       </div>
 
       {/* Floor Plan with Pins */}
