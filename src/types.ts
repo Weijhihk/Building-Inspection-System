@@ -27,9 +27,12 @@ export interface Project {
   id: string;
   name: string;
   has_buildings: boolean;
-  buildings: string[];
-  floors: string[];
-  units: string[];
-  common_spaces: string[];
+  buildings: {
+    name: string;
+    layout: {
+      floor: string;
+      items: string[];
+    }[];
+  }[];
 }
 

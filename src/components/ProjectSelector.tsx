@@ -36,11 +36,6 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
   };
 
   const getActiveBuildings = () => selectedProject?.buildings || [];
-  const getActiveFloors = () => selectedProject?.floors || [];
-  const getActiveColumns = () => {
-    if (!selectedProject) return [];
-    return [...(selectedProject.units || []), ...(selectedProject.common_spaces || [])];
-  };
 
   const handleProjectSelect = async (p: Project) => {
     setSelectedProject(p);
@@ -154,16 +149,17 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
                   <div className="col-span-2 mb-4 text-center">
                     <h2 className="text-lg font-bold">選擇棟別</h2>
                   </div>
-                  {getActiveBuildings().map((b: string) => (
+                  {getActiveBuildings().map((b: any) => (
                     <button
-                      key={b}
+                      key={b.name}
                       onClick={async () => { 
-                        setSelectedBuilding(b); 
+                        const name = b.name;
+                        setSelectedBuilding(name); 
                         setStep(2); 
                         // Fetch status exactly when advancing to step 2
                         if (selectedProject) {
                           try {
-                            const res = await fetch(`/api/projects/${selectedProject.id}/${b}/units-status`, {
+                            const res = await fetch(`/api/projects/${selectedProject.id}/${name}/units-status`, {
                               headers: { 'Authorization': `Bearer ${token}` }
                             });
                             const counts = await res.json();
@@ -175,7 +171,7 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
                       }}
                       className="p-6 text-center border-2 border-zinc-100 rounded-2xl hover:border-zinc-900 hover:bg-zinc-50 hover:shadow-lg transition-all"
                     >
-                      <span className="text-2xl font-bold">{b}</span>
+                      <span className="text-2xl font-bold">{b.name}</span>
                     </button>
                   ))}
                 </motion.div>
@@ -194,68 +190,73 @@ export default function ProjectSelector({ onSelectUnit, token }: ProjectSelector
                     <h2 className="text-lg font-bold text-zinc-900 mb-1">
                       [{selectedProject?.id}] {selectedProject?.name} - {selectedBuilding}
                     </h2>
-                    <p className="text-zinc-500">請點擊選擇欲驗收的戶別</p>
+                    <p className="text-zinc-500">請點擊選擇欲驗收的戶別/區域</p>
                   </div>
                   
-                  <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                    <table className="w-full text-center border-collapse">
-                      <thead>
-                        <tr className="bg-zinc-50 border-b border-zinc-200">
-                          <th className="py-4 px-2 font-bold text-zinc-500 border-r border-zinc-200 w-24">樓層 \\ 戶號/區域</th>
-                          {getActiveColumns().map((u: string) => (
-                            <th key={u} className="py-4 px-2 font-bold text-zinc-900">{u}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...getActiveFloors()].reverse().map((f: string) => ( // Reverse so top floor is conceptually on top
-                          <tr key={f} className="border-b border-zinc-100 hover:bg-zinc-50 transition-colors group">
-                            <td className="py-3 px-2 font-bold text-zinc-900 border-r border-zinc-200 bg-zinc-50 group-hover:bg-zinc-100">{f}</td>
-                            {getActiveColumns().map((u: string) => {
-                              const key = `${f}-${u}`;
-                              const status = defectCounts[key];
-                              
-                              if (status?.isInspected) {
-                                return (
-                                  <td key={key} className="p-1">
-                                    <button
-                                      disabled
-                                      className="w-full py-3 rounded-lg border border-transparent bg-green-50 text-green-600 transition-all text-sm font-bold opacity-80 cursor-not-allowed"
-                                    >
-                                      已驗收
-                                    </button>
-                                  </td>
-                                );
-                              }
-                              
-                              if (status?.defectCount > 0) {
-                                return (
-                                  <td key={key} className="p-1">
-                                    <button
-                                      onClick={() => handleGridSelect(f, u)}
-                                      className="w-full py-3 rounded-lg border border-red-200 hover:border-red-600 hover:bg-red-600 hover:text-white transition-all text-sm font-bold text-red-600 shadow-sm"
-                                    >
-                                      {status.defectCount} 項缺失
-                                    </button>
-                                  </td>
-                                );
-                              }
-                              
+                  <div className="space-y-4">
+                    {(selectedProject?.has_buildings 
+                      ? [...(selectedProject?.buildings?.find(b => b.name === selectedBuilding)?.layout || [])]
+                      : [...(selectedProject?.buildings?.[0]?.layout || [])]
+                    ).reverse().map((floorData, idx) => (
+                      <div key={idx} className="bg-white border border-zinc-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-start md:items-center">
+                        <div className="bg-zinc-100 px-4 py-2 rounded-xl font-bold text-zinc-800 text-lg w-full md:w-24 text-center shrink-0">
+                          {floorData.floor}
+                        </div>
+                        <div className="flex-1 flex flex-wrap gap-2">
+                          {floorData.items.map((item: string, itemIdx: number) => {
+                            const key = `${floorData.floor}-${item}`;
+                            const status = defectCounts[key];
+                            
+                            if (status?.isInspected) {
                               return (
-                                <td key={key} className="p-1">
-                                  <button
-                                    onClick={() => handleGridSelect(f, u)}
-                                    className="w-full py-3 rounded-lg border border-transparent hover:border-zinc-900 hover:bg-zinc-900 hover:text-white transition-all text-sm font-bold text-zinc-600"
-                                  >
-                                    選擇
-                                  </button>
-                                </td>
+                                <button
+                                  key={itemIdx}
+                                  disabled
+                                  className="px-4 py-2 rounded-xl border border-transparent bg-green-50 text-green-600 font-bold opacity-80 cursor-not-allowed text-sm"
+                                >
+                                  {item}<br/><span className="text-xs font-normal">已驗收</span>
+                                </button>
                               );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                            }
+                            
+                            if (status?.defectCount > 0) {
+                              return (
+                                <button
+                                  key={itemIdx}
+                                  onClick={() => handleGridSelect(floorData.floor, item)}
+                                  className="px-4 py-2 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all font-bold shadow-sm text-sm"
+                                >
+                                  {item}<br/><span className="text-xs">{status.defectCount}項缺失</span>
+                                </button>
+                              );
+                            }
+                            
+                            return (
+                              <button
+                                key={itemIdx}
+                                onClick={() => handleGridSelect(floorData.floor, item)}
+                                className="px-4 py-2 rounded-xl border border-zinc-200 bg-white hover:border-zinc-900 hover:bg-zinc-900 hover:text-white transition-all font-bold text-zinc-600 text-sm"
+                              >
+                                {item}
+                              </button>
+                            );
+                          })}
+                          
+                          {(!floorData.items || floorData.items.length === 0) && (
+                            <span className="text-sm text-zinc-400 py-2">該樓層無設定戶別/公設</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {!(selectedProject?.has_buildings 
+                      ? selectedProject?.buildings?.find(b => b.name === selectedBuilding)?.layout?.length
+                      : selectedProject?.buildings?.[0]?.layout?.length
+                    ) && (
+                      <div className="text-center py-12 bg-white rounded-2xl border border-zinc-200 text-zinc-400">
+                        管理員尚未設定此專案的樓層與戶別配置
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}

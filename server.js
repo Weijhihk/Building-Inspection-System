@@ -25,9 +25,7 @@ db.exec(`
     name TEXT NOT NULL,
     has_buildings INTEGER DEFAULT 1,
     buildings TEXT DEFAULT '["A棟", "B棟"]',
-    floors TEXT DEFAULT '["2F", "3F", "4F", "5F", "6F", "7F", "8F", "9F", "10F"]',
-    units TEXT DEFAULT '["1戶", "2戶", "3戶", "4戶", "5戶", "6戶"]',
-    common_spaces TEXT DEFAULT '[]'
+    layout TEXT DEFAULT '[]'
   );
 
   CREATE TABLE IF NOT EXISTS units (
@@ -107,10 +105,9 @@ const hasBuildingsCol = projectsTableInfo.some(col => col.name === 'has_building
 if (!hasBuildingsCol) {
   try {
     db.prepare("ALTER TABLE projects ADD COLUMN has_buildings INTEGER DEFAULT 1").run();
-    db.prepare("ALTER TABLE projects ADD COLUMN buildings TEXT DEFAULT '[\"A棟\", \"B棟\"]'").run();
-    db.prepare("ALTER TABLE projects ADD COLUMN floors TEXT DEFAULT '[\"2F\", \"3F\", \"4F\", \"5F\", \"6F\", \"7F\", \"8F\", \"9F\", \"10F\"]'").run();
-    db.prepare("ALTER TABLE projects ADD COLUMN units TEXT DEFAULT '[\"1戶\", \"2戶\", \"3戶\", \"4戶\", \"5戶\", \"6戶\"]'").run();
-    db.prepare("ALTER TABLE projects ADD COLUMN common_spaces TEXT DEFAULT '[]'").run();
+    // Default buildings will be an empty array.
+    db.prepare("ALTER TABLE projects ADD COLUMN buildings TEXT DEFAULT '[]'").run();
+    db.prepare("ALTER TABLE projects ADD COLUMN layout TEXT DEFAULT '[]'").run(); // Deprecated but kept for schema stability
     console.log("[Migration] Added dynamic configuration columns to projects table.");
   } catch (err) {
     console.error("[Migration] Failed to add columns to projects:", err);
@@ -154,14 +151,51 @@ function ensureUnitExists(projectId, building, floor, unitNumber) {
 app.get('/api/projects', (req, res) => {
   const projects = db.prepare('SELECT * FROM projects').all();
   // Parse JSON strings back to arrays
-  const parsedProjects = projects.map(p => ({
-    ...p,
-    has_buildings: p.has_buildings === 1,
-    buildings: JSON.parse(p.buildings || '[]'),
-    floors: JSON.parse(p.floors || '[]'),
-    units: JSON.parse(p.units || '[]'),
-    common_spaces: JSON.parse(p.common_spaces || '[]')
-  }));
+  const parsedProjects = projects.map(p => {
+    let buildingsArr = [];
+    try {
+      buildingsArr = JSON.parse(p.buildings || '[]');
+    } catch(e) {}
+
+    // Fallback migration logic: if buildings is an array of strings (legacy), we need to map them to objects with layouts
+    let legacyLayout = [];
+    try {
+      legacyLayout = JSON.parse(p.layout || '[]');
+    } catch(e) {}
+    
+    // Auto-migrate older legacy data (floors/units strings) to legacyLayout if empty
+    if (legacyLayout.length === 0 && p.floors) {
+      const floorsArr = JSON.parse(p.floors || '[]');
+      const unitsArr = JSON.parse(p.units || '[]');
+      const commonArr = JSON.parse(p.common_spaces || '[]');
+      const combinedItems = [...unitsArr, ...commonArr];
+      
+      legacyLayout = floorsArr.map(f => ({
+        floor: f,
+        items: [...combinedItems]
+      }));
+    }
+
+    // Convert string array to object array
+    if (buildingsArr.length > 0 && typeof buildingsArr[0] === 'string') {
+      buildingsArr = buildingsArr.map(b => ({
+        name: b,
+        layout: legacyLayout.length > 0 ? JSON.parse(JSON.stringify(legacyLayout)) : []
+      }));
+    } else if (buildingsArr.length === 0 && p.has_buildings === 0) {
+      // If it's a no-building project but buildings array is empty, provide a default object so it holds the layout
+      buildingsArr = [{
+        name: '無分棟',
+        layout: legacyLayout.length > 0 ? JSON.parse(JSON.stringify(legacyLayout)) : []
+      }];
+    }
+
+    return {
+      ...p,
+      has_buildings: p.has_buildings === 1,
+      buildings: buildingsArr
+    };
+  });
   res.json(parsedProjects);
 });
 
@@ -354,7 +388,7 @@ app.post('/api/admin/projects', (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { id, name, has_buildings, buildings, floors, units, common_spaces } = req.body;
+  const { id, name, has_buildings, buildings } = req.body;
   if (!id || !name) return res.status(400).json({ error: 'Project ID and Name are required' });
 
   try {
@@ -363,15 +397,12 @@ app.post('/api/admin/projects', (req, res) => {
     if (userRole !== 'admin') return res.status(403).json({ error: 'Forbidden' });
 
     db.prepare(`
-      INSERT INTO projects (id, name, has_buildings, buildings, floors, units, common_spaces) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO projects (id, name, has_buildings, buildings) 
+      VALUES (?, ?, ?, ?)
     `).run(
       id, name, 
       has_buildings ? 1 : 0, 
-      JSON.stringify(buildings || []), 
-      JSON.stringify(floors || []), 
-      JSON.stringify(units || []), 
-      JSON.stringify(common_spaces || [])
+      JSON.stringify(buildings || [])
     );
     res.json({ success: true, id });
   } catch (e) {
@@ -388,7 +419,7 @@ app.put('/api/admin/projects/:id', (req, res) => {
   if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
 
   const { id } = req.params;
-  const { name, has_buildings, buildings, floors, units, common_spaces } = req.body;
+  const { name, has_buildings, buildings } = req.body;
 
   try {
     const token = authHeader.split(' ')[1];
@@ -397,15 +428,12 @@ app.put('/api/admin/projects/:id', (req, res) => {
 
     db.prepare(`
       UPDATE projects 
-      SET name = ?, has_buildings = ?, buildings = ?, floors = ?, units = ?, common_spaces = ?
+      SET name = ?, has_buildings = ?, buildings = ?
       WHERE id = ?
     `).run(
       name, 
       has_buildings ? 1 : 0, 
       JSON.stringify(buildings || []), 
-      JSON.stringify(floors || []), 
-      JSON.stringify(units || []), 
-      JSON.stringify(common_spaces || []),
       id
     );
     res.json({ success: true });

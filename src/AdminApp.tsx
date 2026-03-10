@@ -7,10 +7,13 @@ interface Project {
   id: string;
   name: string;
   has_buildings: boolean;
-  buildings: string[];
-  floors: string[];
-  units: string[];
-  common_spaces: string[];
+  buildings: {
+    name: string;
+    layout: {
+      floor: string;
+      items: string[];
+    }[];
+  }[];
 }
 
 export default function AdminApp() {
@@ -29,6 +32,10 @@ export default function AdminApp() {
 
   const [showProjectModal, setShowProjectModal] = useState<boolean>(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editingBuildings, setEditingBuildings] = useState<{name: string, layout: {floor: string, items: string[]}[]}[]>([]);
+  const [editingActiveBuilding, setEditingActiveBuilding] = useState<string>('');
+  const [buildingsInputText, setBuildingsInputText] = useState<string>('A棟, B棟');
+  const [batchItemsInput, setBatchItemsInput] = useState<string>('');
   
   const [showDefectModal, setShowDefectModal] = useState(false);
   const [activeUnitDefects, setActiveUnitDefects] = useState<any[]>([]);
@@ -42,12 +49,10 @@ export default function AdminApp() {
   const getActiveBuildings = () => {
     if (!selectedProject) return [];
     if (!selectedProject.has_buildings) return ['無分棟'];
-    return selectedProject.buildings || [];
+    return selectedProject.buildings?.map(b => b.name) || [];
   };
-  const getActiveFloors = () => selectedProject?.floors || [];
   const getActiveColumns = () => {
-    if (!selectedProject) return [];
-    return [...(selectedProject.units || []), ...(selectedProject.common_spaces || [])];
+    return []; // deprecated for table rendering, kept for backward compatibility if missed
   };
 
   const handleLogin = (newToken: string, newUser: any) => {
@@ -112,6 +117,38 @@ export default function AdminApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject]);
+
+  // Load layout into editing state when opening modal
+  useEffect(() => {
+    if (showProjectModal) {
+      if (editingProject) {
+        setEditingBuildings(JSON.parse(JSON.stringify(editingProject.buildings || [])));
+        setBuildingsInputText(editingProject.buildings?.map(b => b.name).join(', ') || '');
+        if (editingProject.buildings?.length > 0) {
+          setEditingActiveBuilding(editingProject.buildings[0].name);
+        } else {
+          setEditingActiveBuilding('');
+        }
+      } else {
+        setEditingBuildings([]);
+        setEditingActiveBuilding('');
+        setBuildingsInputText('A棟, B棟');
+      }
+      setBatchItemsInput('');
+    }
+  }, [showProjectModal, editingProject]);
+
+  const syncBuildingsInput = () => {
+    const names = buildingsInputText.split(',').map(s => s.trim()).filter(Boolean);
+    const newBuildings = names.map(n => {
+      const existing = editingBuildings.find(b => b.name === n);
+      return existing ? existing : { name: n, layout: [] };
+    });
+    setEditingBuildings(newBuildings);
+    if (!names.includes(editingActiveBuilding) && newBuildings.length > 0) {
+      setEditingActiveBuilding(newBuildings[0].name);
+    }
+  };
 
   const fetchData = async () => {
     if (!selectedProject || !token) return;
@@ -214,10 +251,7 @@ export default function AdminApp() {
         id: projectData.id,
         name: projectData.name,
         has_buildings: projectData.has_buildings === 'true',
-        buildings: projectData.buildings.split(',').map((s: string) => s.trim()).filter(Boolean),
-        floors: projectData.floors.split(',').map((s: string) => s.trim()).filter(Boolean),
-        units: projectData.units.split(',').map((s: string) => s.trim()).filter(Boolean),
-        common_spaces: projectData.common_spaces.split(',').map((s: string) => s.trim()).filter(Boolean),
+        buildings: editingBuildings,
       };
 
       const res = await fetch(url, {
@@ -598,23 +632,28 @@ export default function AdminApp() {
                         <span className="text-xs font-bold text-slate-400 block mb-1">棟別</span>
                         <div className="flex flex-wrap gap-1">
                           {p.buildings?.map(b => (
-                            <span key={b} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs">{b}</span>
+                            <span key={b.name} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs">{b.name}</span>
                           ))}
                         </div>
                       </div>
                     )}
                     <div>
-                      <span className="text-xs font-bold text-slate-400 block mb-1">樓層 (共 {p.floors?.length} 層)</span>
+                      <span className="text-xs font-bold text-slate-400 block mb-1">樓層 (共 {p.buildings?.reduce((acc, b) => acc + (b.layout?.length || 0), 0) || 0} 層)</span>
                       <div className="text-sm text-slate-700 max-h-12 overflow-hidden text-ellipsis line-clamp-2">
-                        {p.floors?.join(', ')}
+                        {p.buildings?.flatMap(b => b.layout?.map(l => l.floor)).join(', ') || '尚未設定'}
                       </div>
                     </div>
                     <div>
-                      <span className="text-xs font-bold text-slate-400 block mb-1">戶別 / 區域 (共 {(p.units?.length || 0) + (p.common_spaces?.length || 0)} 區)</span>
+                      <span className="text-xs font-bold text-slate-400 block mb-1">戶別 / 區域 (共 {p.buildings?.reduce((acc, b) => acc + (b.layout?.reduce((acc2, l) => acc2 + (l.items?.length || 0), 0) || 0), 0) || 0} 區)</span>
                       <div className="flex flex-wrap gap-1">
-                        {p.units?.map(u => <span key={u} className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs">{u}</span>)}
-                        {p.common_spaces?.map(c => <span key={c} className="bg-amber-50 text-amber-600 px-2 py-0.5 rounded text-xs">{c}</span>)}
-                        {(!p.units?.length && !p.common_spaces?.length) && <span className="text-xs text-slate-400 italic">尚未設定</span>}
+                        {/* Display a unique list of items across all floors as a preview */}
+                        {Array.from(new Set(p.buildings?.flatMap(b => b.layout?.flatMap(l => l.items) || []) || [])).slice(0, 10).map(u => (
+                          <span key={u as string} className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded text-xs">{u as string}</span>
+                        ))}
+                        {(Array.from(new Set(p.buildings?.flatMap(b => b.layout?.flatMap(l => l.items) || []) || [])).length > 10) && (
+                          <span className="text-xs text-slate-400 mt-0.5">...</span>
+                        )}
+                        {(!p.buildings?.length || p.buildings.every(b => !b.layout?.length)) && <span className="text-xs text-slate-400 italic">尚未設定</span>}
                       </div>
                     </div>
                   </div>
@@ -658,62 +697,69 @@ export default function AdminApp() {
               </button>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-center border-collapse min-w-[800px]">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="py-4 px-4 font-bold text-slate-500 border-r border-slate-200 w-24 sticky left-0 bg-slate-50 z-10">樓層 \\ 戶別</th>
-                      {getActiveColumns().map((u: string) => (
-                        <th key={u} className="py-4 px-2 font-bold text-slate-900 min-w-[80px]">{u}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...getActiveFloors()].reverse().map((f: string) => (
-                      <tr key={f} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                        <td className="py-4 px-4 font-bold text-slate-900 border-r border-slate-200 bg-slate-50 sticky left-0 z-10">{f}</td>
-                        {getActiveColumns().map((u: string) => {
-                          const key = `${f}-${u}`;
-                          const status = defectCounts[key];
-                          return (
-                            <td key={key} className="p-2 border-r border-slate-100 last:border-0 relative group">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 overscroll-contain">
+              <div className="space-y-6">
+                {(selectedProject?.has_buildings 
+                  ? [...(selectedProject?.buildings?.find(b => b.name === selectedBuilding)?.layout || [])]
+                  : [...(selectedProject?.buildings?.[0]?.layout || [])]
+                ).reverse().map((floorData, idx) => (
+                  <div key={idx} className="flex flex-col xl:flex-row gap-4">
+                    <div className="xl:w-32 shrink-0 py-2">
+                      <div className="bg-slate-100/80 px-4 py-3 rounded-xl font-bold text-slate-800 text-lg text-center shadow-sm border border-slate-200">
+                        {floorData.floor}
+                      </div>
+                    </div>
+                    
+                    <div className="flex-1 flex flex-wrap gap-3">
+                      {floorData.items.map((item: string, itemIdx: number) => {
+                        const key = `${floorData.floor}-${item}`;
+                        const status = defectCounts[key];
+                        
+                        return (
+                          <div key={itemIdx} className="w-full sm:w-[calc(50%-0.375rem)] md:w-[calc(33.333%-0.5rem)] lg:w-[calc(25%-0.5625rem)] xl:w-48 shrink-0">
+                            <div className={`h-full flex flex-col justify-between p-3 rounded-xl border transition-all ${
+                              !status?.unitId 
+                                ? 'bg-slate-50 border-slate-200 border-dashed opacity-70' 
+                                : status.isInspected 
+                                  ? 'bg-green-50/50 border-green-200 shadow-sm' 
+                                  : status.defectCount > 0 
+                                    ? 'bg-red-50/50 border-red-200 shadow-sm' 
+                                    : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+                            }`}>
+                              
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="font-bold text-slate-800">{item}</span>
+                                {status?.isInspected && (
+                                  <span className="text-[10px] font-bold text-green-600 bg-green-100 px-1.5 py-0.5 rounded uppercase">已鎖定</span>
+                                )}
+                              </div>
+                              
                               {!status?.unitId ? (
-                                <div className="text-xs text-slate-300 font-bold py-2">未建立</div>
+                                <div className="text-xs text-slate-400 font-bold py-3 text-center">未建立巡檢資料</div>
                               ) : (
-                                <div className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
-                                  status.isInspected 
-                                    ? 'bg-green-50/50 border-green-200' 
-                                    : status.defectCount > 0 
-                                      ? 'bg-red-50/50 border-red-200 shadow-sm' 
-                                      : 'bg-white border-slate-200 hover:border-slate-300'
-                                }`}>
+                                <>
                                   <button
                                     onClick={() => fetchUnitDefects(status.unitId, key)}
-                                    className="flex flex-col items-center gap-1 mb-2 hover:opacity-80 transition-opacity"
+                                    className="flex items-center gap-1.5 group mb-3 hover:opacity-80 transition-opacity"
                                   >
-                                    <div className="flex items-center gap-1">
-                                      {status.isInspected ? (
-                                        <CheckCircle2 size={16} className="text-green-600" />
-                                      ) : (
-                                        <AlertCircle size={16} className={status.defectCount > 0 ? "text-red-500" : "text-slate-300"} />
-                                      )}
-                                      <span className={`text-sm font-bold ${
-                                        status.isInspected ? 'text-green-700' : status.defectCount > 0 ? 'text-red-600' : 'text-slate-600'
-                                      }`}>
-                                        {status.defectCount} 缺失
-                                      </span>
-                                    </div>
-                                    {status.isInspected && (
-                                      <span className="text-[10px] font-bold text-green-600 bg-green-100 px-1.5 rounded uppercase">已鎖定</span>
+                                    {status.isInspected ? (
+                                      <CheckCircle2 size={16} className="text-green-600" />
+                                    ) : (
+                                      <AlertCircle size={16} className={status.defectCount > 0 ? "text-red-500" : "text-slate-300 group-hover:text-blue-500"} />
                                     )}
+                                    <span className={`text-sm font-bold ${
+                                      status.isInspected ? 'text-green-700' : status.defectCount > 0 ? 'text-red-600' : 'text-slate-600 group-hover:text-blue-600'
+                                    }`}>
+                                      {status.defectCount} 項缺失
+                                    </span>
                                   </button>
+                                  
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleToggleLock(key, status.isInspected, status.unitId); }}
-                                    className={`flex items-center justify-center gap-1 w-full py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    className={`flex items-center justify-center gap-1.5 w-full py-2 rounded-lg text-xs font-bold transition-all ${
                                       status.isInspected 
-                                        ? 'bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200' 
-                                        : 'bg-slate-900 text-white hover:bg-slate-800'
+                                        ? 'bg-white border border-slate-200 text-slate-700 hover:bg-red-50 hover:text-red-700 hover:border-red-200' 
+                                        : 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm'
                                     }`}
                                   >
                                     {status.isInspected ? (
@@ -722,15 +768,28 @@ export default function AdminApp() {
                                       <><Lock size={14} /> 強制鎖定</>
                                     )}
                                   </button>
-                                </div>
+                                </>
                               )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      
+                      {(!floorData.items || floorData.items.length === 0) && (
+                        <div className="w-full flex items-center justify-center py-6 text-sm text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                          該樓層無設定戶別/公設
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                {(!selectedProject?.buildings || selectedProject.buildings.every(b => !b.layout || b.layout.length === 0)) && (
+                  <div className="text-center py-20 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-500">
+                    <Building2 size={40} className="mx-auto mb-3 opacity-20" />
+                    請至「專案管理」設定各棟別/樓層的戶別配置
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -858,8 +917,7 @@ export default function AdminApp() {
                   </div>
                   
                   <div className="border-t border-slate-100 pt-6">
-                    <label className="text-xs font-bold text-slate-500 uppercase mb-3 block">網格基礎參數 (以半形逗點 , 分隔)</label>
-                    
+                    <label className="text-xs font-bold text-slate-500 uppercase mb-3 block">網格基礎參數</label>
                     <div className="space-y-4">
                       <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                         <div className="flex items-center gap-4 mb-3">
@@ -872,26 +930,158 @@ export default function AdminApp() {
                             <span className="text-sm font-bold text-slate-700">無分棟 (單棟)</span>
                           </label>
                         </div>
-                        <input name="buildings" defaultValue={editingProject?.buildings?.join(', ') || 'A棟, B棟'} className="w-full px-4 py-2 bg-white rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-600" placeholder="A棟, B棟, C棟..." />
-                        <p className="text-[10px] text-slate-400 mt-1">若選擇「無分棟」，仍可留空，系統將自動以「無分棟」處理。</p>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 mb-1 block">樓層列表</label>
-                        <textarea name="floors" defaultValue={editingProject?.floors?.join(', ') || '2F, 3F, 4F, 5F, 6F, 7F, 8F, 9F, 10F'} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none text-sm min-h-[80px]" placeholder="1F, 2F, 3F..."></textarea>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1 block">戶別列表</label>
-                          <textarea name="units" defaultValue={editingProject?.units?.join(', ') || '1戶, 2戶, 3戶, 4戶, 5戶, 6戶'} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none text-sm min-h-[80px]" placeholder="1戶, 2戶, 3戶..."></textarea>
+                        <div className="flex gap-2 items-center mt-2">
+                          <input 
+                            name="buildings" 
+                            value={buildingsInputText}
+                            onChange={(e) => setBuildingsInputText(e.target.value)}
+                            onBlur={syncBuildingsInput}
+                            className="flex-1 px-4 py-2 bg-white rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-blue-600" 
+                            placeholder="A棟, B棟, C棟... (以半形逗號分隔)" 
+                          />
+                          <button type="button" onClick={syncBuildingsInput} className="px-4 py-2 bg-slate-200 text-slate-700 font-bold text-sm rounded-lg hover:bg-slate-300 transition-colors">
+                            套用新棟別
+                          </button>
                         </div>
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1 block">同層公共空間</label>
-                          <textarea name="common_spaces" defaultValue={editingProject?.common_spaces?.join(', ') || ''} className="w-full px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-600 outline-none text-sm min-h-[80px]" placeholder="梯間, 機房, 公設..."></textarea>
-                          <p className="text-[10px] text-slate-400 mt-1">公設區也會被視為驗收對象與戶別並排顯示</p>
-                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">若選擇「無分棟」，仍可留空，系統將自動以單棟處理。每次修改棟別名稱後，請點擊套用以更新下方頁籤。</p>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-6">
+                    {editingBuildings.length > 0 && (
+                      <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200 overflow-x-auto mb-4">
+                        {editingBuildings.map(b => (
+                          <button
+                            key={b.name}
+                            type="button"
+                            onClick={() => setEditingActiveBuilding(b.name)}
+                            className={`px-4 py-1.5 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${
+                              editingActiveBuilding === b.name ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                            }`}
+                          >
+                            {b.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mb-3 text-xs font-bold text-slate-500 uppercase">
+                      <label>目前編輯：{editingActiveBuilding || '未選擇棟別'} (Layout Builder)</label>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                          if (activeIdx === -1) return;
+                          const newB = [...editingBuildings];
+                          const num = newB[activeIdx].layout.length + 1;
+                          newB[activeIdx].layout.unshift({ floor: `${num}F`, items: [] });
+                          setEditingBuildings(newB);
+                        }}
+                        className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+                      >
+                        + 新增樓層
+                      </button>
+                    </div>
+
+                    <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-200 mb-4">
+                      <span className="text-xs font-bold text-yellow-800 mb-2 block">⚡ 從此處能快速填入 {editingActiveBuilding || ''} 全棟單層配置</span>
+                      <div className="flex gap-2">
+                        <input 
+                          value={batchItemsInput}
+                          onChange={(e) => setBatchItemsInput(e.target.value)}
+                          placeholder="例如: 1戶, 2戶, 3戶, 大廳" 
+                          className="flex-1 px-3 py-2 text-sm bg-white border border-yellow-300 rounded-lg outline-none focus:ring-2 focus:ring-yellow-500"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            if (!batchItemsInput.trim() || !editingActiveBuilding) return;
+                            const items = batchItemsInput.split(',').map(s => s.trim()).filter(Boolean);
+                            const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                            if (activeIdx === -1) return;
+                            
+                            const newB = [...editingBuildings];
+                            newB[activeIdx].layout = newB[activeIdx].layout.map(l => ({ ...l, items: [...items] }));
+                            setEditingBuildings(newB);
+                          }}
+                          className="bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                        >
+                          一鍵套用
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {editingBuildings.find(b => b.name === editingActiveBuilding)?.layout.map((floorData, floorIndex) => (
+                        <div key={floorIndex} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col md:flex-row gap-3 items-start md:items-center">
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => {
+                              const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                              const newB = [...editingBuildings];
+                              newB[activeIdx].layout.splice(floorIndex, 1);
+                              setEditingBuildings(newB);
+                            }} className="text-slate-400 hover:text-red-500 p-1">
+                              <X size={14} />
+                            </button>
+                            <input 
+                              value={floorData.floor}
+                              onChange={(e) => {
+                                const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                                const newB = [...editingBuildings];
+                                newB[activeIdx].layout[floorIndex].floor = e.target.value;
+                                setEditingBuildings(newB);
+                              }}
+                              className="w-16 px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-center outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div className="flex-1 flex flex-wrap gap-2 items-center w-full">
+                            {floorData.items.map((item, itemIndex) => (
+                              <div key={itemIndex} className="flex items-center bg-white border border-slate-200 rounded-lg overflow-hidden group">
+                                <input 
+                                  value={item}
+                                  onChange={(e) => {
+                                    const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                                    const newB = [...editingBuildings];
+                                    newB[activeIdx].layout[floorIndex].items[itemIndex] = e.target.value;
+                                    setEditingBuildings(newB);
+                                  }}
+                                  className="w-16 md:w-20 px-2 py-1.5 text-xs text-center outline-none bg-transparent"
+                                />
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                                    const newB = [...editingBuildings];
+                                    newB[activeIdx].layout[floorIndex].items.splice(itemIndex, 1);
+                                    setEditingBuildings(newB);
+                                  }}
+                                  className="bg-slate-100 hover:bg-red-50 text-slate-400 hover:text-red-500 px-1.5 py-1.5 h-full border-l border-slate-100 transition-colors"
+                                >
+                                  <X size={12} />
+                                </button>
+                              </div>
+                            ))}
+                            <button 
+                              type="button"
+                              onClick={() => {
+                                const activeIdx = editingBuildings.findIndex(b => b.name === editingActiveBuilding);
+                                const newB = [...editingBuildings];
+                                newB[activeIdx].layout[floorIndex].items.push(`新戶別`);
+                                setEditingBuildings(newB);
+                              }}
+                              className="w-8 h-7 flex items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {(!editingBuildings.find(b => b.name === editingActiveBuilding)?.layout || editingBuildings.find(b => b.name === editingActiveBuilding)?.layout.length === 0) && (
+                        <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl text-slate-400 text-sm">
+                          請先點擊上方「+ 新增樓層」來建立網格
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
