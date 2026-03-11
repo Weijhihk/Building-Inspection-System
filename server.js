@@ -36,12 +36,24 @@ function verifyToken(token) {
 
 function adminOnly(req, res, next) {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'Unauthorized' });
+  if (!authHeader) {
+    console.warn('[Auth] No authorization header provided');
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   
   const token = authHeader.split(' ')[1];
   const user = verifyToken(token);
   
-  if (!user || user.role !== 'admin') {
+  if (!user) {
+    console.warn('[Auth] Token verification failed');
+    return res.status(403).json({ error: 'Forbidden: Invalid token' });
+  }
+
+  // Normalize role check (trim and lowercase)
+  const userRole = (user.role || '').toString().trim().toLowerCase();
+  
+  if (userRole !== 'admin') {
+    console.warn(`[Auth] Admin access denied for user: ${user.username}, role found: "${user.role}"`);
     return res.status(403).json({ error: 'Forbidden: Admin access required' });
   }
   

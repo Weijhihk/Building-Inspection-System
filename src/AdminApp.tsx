@@ -263,6 +263,15 @@ export default function AdminApp() {
         body: JSON.stringify(payload)
       });
       
+      if (res.status === 401 || res.status === 403) {
+        const data = await res.json();
+        if (data.error?.includes('token') || data.error?.includes('Admin access')) {
+          alert('驗證過期或無效，請重新登入');
+          handleLogout();
+          return;
+        }
+      }
+
       if (res.ok) {
         setShowProjectModal(false);
         setEditingProject(null);
