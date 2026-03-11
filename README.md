@@ -9,11 +9,13 @@ A robust building inspection system designed for enterprise-scale quality contro
 
 ### 1. 系統環境準備
 * **Node.js**: 建議使用 v20 或更新版本。
-* **資料庫**: 系統使用 SQLite，初次啟動會自動建立 `database.sqlite`。
+* **資料庫**: 系統使用 **PostgreSQL (Docker)**，請確保本機已安裝 Docker 並執行 `docker-compose up -d`。
 
 ### 2. 快速啟動
 1. 安裝套件：`npm install`
-2. 啟動開發伺服器：`npm run dev`
+2. 啟動資料庫：`docker-compose up -d`
+3. 建立並設定 `.env` 檔案。
+4. 啟動開發伺服器：`npm run dev`
    * **前端主介面**: `http://localhost:3000/Building-Inspection-System/`
    * **後台管理系統**: `http://localhost:3000/Building-Inspection-System/admin`
    * **後端 API 伺服器**: `http://localhost:3001` (由並行指令自動啟動)
@@ -44,7 +46,7 @@ A robust building inspection system designed for enterprise-scale quality contro
 
 ### 1. Prerequisites
 * **Node.js**: v20+ recommended.
-* **Database**: Uses SQLite (Auto-initialized as `database.sqlite` on first run).
+* **Database**: Uses **PostgreSQL (Docker)**. Run `docker-compose up -d` to start.
 
 ### 2. Installation & Setup
 1. Install dependencies: `npm install`

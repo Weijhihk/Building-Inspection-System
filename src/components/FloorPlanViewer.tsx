@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Stage, Layer, Image as KonvaImage, Circle, Group, Text } from 'react-konva';
 import useImage from 'use-image';
 import { Pin } from '../types';
@@ -18,6 +18,10 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
+  // Drag-to-add pin state
+  const [isDraggingNewPin, setIsDraggingNewPin] = useState(false);
+  const [newPinPos, setNewPinPos] = useState({ x: 0, y: 0 });
+
   // Realtime refs for synchronous updates during fast gestures
   const scaleRef = useRef(1);
   const posRef = useRef({ x: 0, y: 0 });
@@ -119,49 +123,61 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     };
   }
 
+  const handleTouchStart = (e: any) => {
+    const touches = e.evt.touches;
+    if (touches.length === 2) {
+      const p1 = { x: touches[0].clientX, y: touches[0].clientY };
+      const p2 = { x: touches[1].clientX, y: touches[1].clientY };
+      lastDist.current = getDistance(p1, p2);
+      lastCenter.current = getCenter(p1, p2);
+    }
+  };
+
   const handleTouchMove = (e: any) => {
-    e.evt.preventDefault();
-    const touch1 = e.evt.touches[0];
-    const touch2 = e.evt.touches[1];
+    // If dragging new pin (1 finger), don't perform zoom/pan
+    if (isDraggingNewPin) return;
+
+    const touches = e.evt.touches;
     const layer = layerRef.current;
+    const stage = stageRef.current;
 
-    if (touch1 && touch2 && layer) {
-      if (layer.isDragging()) {
-        layer.stopDrag(); // Intercept default pan so we can pinch
-      }
-
-      const p1 = { x: touch1.clientX, y: touch1.clientY };
-      const p2 = { x: touch2.clientX, y: touch2.clientY };
-
-      if (!lastCenter.current) {
-        lastCenter.current = getCenter(p1, p2);
-        return;
-      }
+    // MANDATORY: Only 2 fingers can pan/zoom
+    if (touches.length === 2 && layer && stage) {
+      e.evt.preventDefault();
+      
+      const p1 = { x: touches[0].clientX, y: touches[0].clientY };
+      const p2 = { x: touches[1].clientX, y: touches[1].clientY };
       
       const dist = getDistance(p1, p2);
-      if (!lastDist.current) {
+      const center = getCenter(p1, p2);
+
+      if (!lastDist.current || !lastCenter.current) {
         lastDist.current = dist;
+        lastCenter.current = center;
+        return;
       }
 
       const oldScale = layer.scaleX();
       const oldPosition = layer.position();
 
+      // 1. Calculate new scale (Zoom)
       const distDiff = dist / lastDist.current;
       const newScale = oldScale * distDiff;
       const finalScale = Math.max(0.05, Math.min(newScale, 20));
 
-      const center = getCenter(p1, p2);
-      
-      const dx = center.x - lastCenter.current.x;
-      const dy = center.y - lastCenter.current.y;
-      
+      // 2. Calculate point to zoom towards (last center relative to layer)
       const pointTo = {
         x: (lastCenter.current.x - oldPosition.x) / oldScale,
         y: (lastCenter.current.y - oldPosition.y) / oldScale,
       };
 
-      const newX = lastCenter.current.x - pointTo.x * finalScale + dx;
-      const newY = lastCenter.current.y - pointTo.y * finalScale + dy;
+      // 3. Calculate Pan translation (Movement of center point)
+      const dx = center.x - lastCenter.current.x;
+      const dy = center.y - lastCenter.current.y;
+
+      // 4. Update position based on both Zoom anchor and Pan translation
+      const newX = center.x - pointTo.x * finalScale;
+      const newY = center.y - pointTo.y * finalScale;
 
       layer.scale({ x: finalScale, y: finalScale });
       layer.position({ x: newX, y: newY });
@@ -179,22 +195,35 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
     lastDist.current = 0;
     lastCenter.current = null;
     
-    // Sync React state upon gesture end
     if (layerRef.current) {
       setScale(layerRef.current.scaleX());
       setPosition(layerRef.current.position());
     }
   };
 
-  const handleStageClick = (e: any) => {
-    // If clicked on a pin, don't add a new one
-    if (e.target !== e.target.getStage() && e.target.className !== 'Image' && e.target.className !== 'Rect') {
-      return;
-    }
+  // Drag pin logic
+  const handleStartDragNewPin = (e: any) => {
+    setIsDraggingNewPin(true);
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    setNewPinPos({ x: clientX, y: clientY });
+  };
+
+  const handleGlobalMove = useCallback((e: any) => {
+    if (!isDraggingNewPin) return;
+    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    setNewPinPos({ x: clientX, y: clientY });
+  }, [isDraggingNewPin]);
+
+  const handleGlobalUp = useCallback((e: any) => {
+    if (!isDraggingNewPin) return;
+    setIsDraggingNewPin(false);
 
     const stage = stageRef.current;
+    if (!stage) return;
+
     const pointer = stage.getPointerPosition();
-    
     if (image && pointer) {
       const x = (pointer.x - position.x) / (image.width * scale);
       const y = (pointer.y - position.y) / (image.height * scale);
@@ -203,6 +232,27 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         onAddPin(x, y);
       }
     }
+  }, [isDraggingNewPin, image, position, scale, onAddPin]);
+
+  useEffect(() => {
+    if (isDraggingNewPin) {
+      window.addEventListener('mousemove', handleGlobalMove);
+      window.addEventListener('mouseup', handleGlobalUp);
+      window.addEventListener('touchmove', handleGlobalMove, { passive: false });
+      window.addEventListener('touchend', handleGlobalUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMove);
+      window.removeEventListener('mouseup', handleGlobalUp);
+      window.removeEventListener('touchmove', handleGlobalMove);
+      window.removeEventListener('touchend', handleGlobalUp);
+    };
+  }, [isDraggingNewPin, handleGlobalMove, handleGlobalUp]);
+
+  const handleStageClick = (e: any) => {
+    // If clicked on a pin, select it
+    // Pin addition is now handled via drag-and-drop
+    return;
   };
 
   return (
@@ -244,6 +294,7 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
         width={dimensions.width}
         height={dimensions.height}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         ref={stageRef}
@@ -257,12 +308,7 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
           y={position.y}
           scaleX={scale}
           scaleY={scale}
-          draggable
-          onDragEnd={(e) => {
-            const newPos = { x: e.target.x(), y: e.target.y() };
-            posRef.current = newPos;
-            setPosition(newPos);
-          }}
+          draggable={false}
         >
           {image && status === 'loaded' && <KonvaImage image={image} />}
           {image && status === 'loaded' && pins.map((pin, index) => (
@@ -312,14 +358,41 @@ const FloorPlanViewer: React.FC<FloorPlanViewerProps> = ({ imageUrl, pins, onAdd
           ))}
         </Layer>
       </Stage>
-      <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur px-3 py-1 rounded-full text-xs text-zinc-600 shadow-sm pointer-events-none flex flex-col gap-1">
-        <span>滾輪縮放 • 拖曳移動 • 點擊標記</span>
+      <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur px-3 py-1 rounded-full text-xs text-zinc-600 shadow-sm pointer-events-none flex flex-col gap-1 z-20">
+        <span>滾輪縮放 • 拖曳移動 • 拖曳右上方圖釘至定點標記</span>
         <span className="text-[10px] opacity-50">
           Status: {status} | Dim: {Math.round(dimensions.width)}x{Math.round(dimensions.height)} | 
-          Img: {image ? `${image.width}x${image.height}` : 'none'} | 
           Scale: {scale.toFixed(2)} | Pos: {Math.round(position.x)},{Math.round(position.y)}
         </span>
       </div>
+
+      {/* Toolbox Pin */}
+      <div 
+        className="absolute top-6 right-6 z-30 flex flex-col items-center gap-2"
+      >
+        <div 
+          onMouseDown={handleStartDragNewPin}
+          onTouchStart={handleStartDragNewPin}
+          className="w-14 h-14 bg-red-500 rounded-2xl flex items-center justify-center text-white shadow-xl cursor-grab active:cursor-grabbing hover:scale-105 transition-transform border-4 border-white"
+          title="拖曳標記缺失"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        </div>
+        <span className="text-[10px] font-bold text-zinc-500 bg-white/80 px-2 py-0.5 rounded-full shadow-sm uppercase tracking-tighter">拖曳標記</span>
+      </div>
+
+      {/* Ghost Pin during dragging */}
+      {isDraggingNewPin && (
+        <div 
+          className="fixed w-8 h-8 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-white shadow-2xl pointer-events-none z-[100] transform -translate-x-1/2 -translate-y-1/2"
+          style={{ 
+            left: newPinPos.x, 
+            top: newPinPos.y,
+          }}
+        >
+          <div className="w-1 h-1 bg-white rounded-full"></div>
+        </div>
+      )}
     </div>
   );
 };
