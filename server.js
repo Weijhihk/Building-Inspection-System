@@ -3,6 +3,8 @@ import pkg from 'pg';
 import cors from 'cors';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
@@ -11,6 +13,29 @@ const { Pool } = pkg;
 const app = express();
 const port = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'inspection_system_default_secret_2026';
+
+// Photo Storage Configuration
+const STORAGE_PATH = process.env.PHOTO_STORAGE_PATH || 'D:/Github/PublicPic';
+if (!fs.existsSync(STORAGE_PATH)) {
+  fs.mkdirSync(STORAGE_PATH, { recursive: true });
+  console.log(`[Photo Storage] Created directory: ${STORAGE_PATH}`);
+}
+console.log(`[Photo Storage] Storing photos in: ${STORAGE_PATH}`);
+
+/**
+ * Save a base64 photo to disk and return its relative URL.
+ * @param {string} base64Data - The full data URL or raw base64 string.
+ * @param {string} filename - The target filename (without path).
+ * @returns {string} The URL to access the photo via the /pics route.
+ */
+function savePhotoToDisk(base64Data, filename) {
+  // Strip data URL prefix if present (e.g., "data:image/jpeg;base64,...")
+  const base64String = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+  const buffer = Buffer.from(base64String, 'base64');
+  const filePath = path.join(STORAGE_PATH, filename);
+  fs.writeFileSync(filePath, buffer);
+  return `/pics/${filename}`;
+}
 
 // Token Security Helpers
 function signToken(payload) {
@@ -73,6 +98,9 @@ const pool = new Pool({
 // Enable CORS and JSON parsing (with large limit for base64 images)
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
+
+// Serve uploaded defect photos statically
+app.use('/pics', express.static(STORAGE_PATH));
 
 // 初始化 PostgreSQL 資料表
 const initDB = async () => {
@@ -295,23 +323,37 @@ app.get('/api/pins/:unitId', async (req, res) => {
 // 5. Save pins and defects
 app.post('/api/pins/:unitId', async (req, res) => {
   const { unitId } = req.params;
-  const { pins } = req.body;
+  const { pins, projectId, building, floor, unitNum } = req.body;
   if (!Array.isArray(pins)) return res.status(400).json({ error: 'Invalid pins format' });
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     
-    // Delete existing
+    // Delete existing pin photos from disk and DB
     const existingPins = await client.query('SELECT id FROM pins WHERE unit_id = $1', [unitId]);
     for (const p of existingPins.rows) {
       const existingDefects = await client.query('SELECT id FROM defects WHERE pin_id = $1', [p.id]);
       for (const d of existingDefects.rows) {
+        const existingPhotos = await client.query('SELECT photo_data FROM defect_photos WHERE defect_id = $1', [d.id]);
+        for (const ph of existingPhotos.rows) {
+          // Only delete files (not old base64 data)
+          if (ph.photo_data && ph.photo_data.startsWith('/pics/')) {
+            const oldFile = path.join(STORAGE_PATH, path.basename(ph.photo_data));
+            if (fs.existsSync(oldFile)) fs.unlinkSync(oldFile);
+          }
+        }
         await client.query('DELETE FROM defect_photos WHERE defect_id = $1', [d.id]);
       }
       await client.query('DELETE FROM defects WHERE pin_id = $1', [p.id]);
     }
     await client.query('DELETE FROM pins WHERE unit_id = $1', [unitId]);
+
+    // Build filename prefix from context
+    const safeProject = (projectId || 'UNK').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeBuilding = (building || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeFloor = (floor || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const safeUnit = (unitNum || '').replace(/[^a-zA-Z0-9_-]/g, '');
 
     // Insert new
     for (const pin of pins) {
@@ -323,11 +365,20 @@ app.post('/api/pins/:unitId', async (req, res) => {
           [defect.id, pin.id, defect.category, defect.name, defect.area, defect.description, defect.status]);
         
         if (defect.photos && defect.photos.length > 0) {
-          for (const photoData of defect.photos) {
+          defect.photos.forEach((photoData, idx) => {
             const photoId = Math.random().toString(36).substr(2, 9);
-            await client.query('INSERT INTO defect_photos (id, defect_id, photo_data) VALUES ($1, $2, $3)', 
-              [photoId, defect.id, photoData]);
-          }
+            let storedValue = photoData;
+
+            // If it's a new base64 image (not already a URL), save to disk
+            if (photoData && !photoData.startsWith('/pics/') && !photoData.startsWith('http')) {
+              const safeDefectId = defect.id.replace(/[^a-zA-Z0-9_-]/g, '');
+              const filename = `${safeProject}_${safeBuilding}_${safeFloor}_${safeUnit}_${safeDefectId}_${idx + 1}.jpg`;
+              storedValue = savePhotoToDisk(photoData, filename);
+            }
+
+            client.query('INSERT INTO defect_photos (id, defect_id, photo_data) VALUES ($1, $2, $3)', 
+              [photoId, defect.id, storedValue]);
+          });
         }
       }
     }
@@ -366,9 +417,26 @@ app.post('/api/export-defects', async (req, res) => {
     `;
 
     for (const d of defects) {
+      // photos_base64 may contain an array of base64 strings or URL paths
+      const rawPhotos = JSON.parse(d.photos_base64 || '[]');
+      const safeProject = (d.project_id || 'UNK').replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeBuilding = (d.building || '').replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeFloor = (d.floor || '').replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeUnit = (d.unit_number || '').replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeDefectId = (d.defect_id || '').replace(/[^a-zA-Z0-9_-]/g, '');
+
+      const savedPhotoPaths = rawPhotos.map((photoData, idx) => {
+        if (!photoData || photoData.startsWith('/pics/') || photoData.startsWith('http')) {
+          return photoData; // Already a URL or empty
+        }
+        const filename = `${safeProject}_${safeBuilding}_${safeFloor}_${safeUnit}_${safeDefectId}_${idx + 1}.jpg`;
+        return savePhotoToDisk(photoData, filename);
+      });
+
       await client.query(insertQuery, [
         d.project_id, d.building, d.floor, d.unit_number, d.defect_id, d.pin_coords,
-        d.area, d.category_1, d.category_2, d.defect_name, d.description, d.photos_base64, Date.now()
+        d.area, d.category_1, d.category_2, d.defect_name, d.description,
+        JSON.stringify(savedPhotoPaths), Date.now()
       ]);
     }
     await client.query('COMMIT');

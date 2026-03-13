@@ -26,28 +26,30 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
 
       {/* Floor Plan with Pins */}
       {(printMode === 'all' || printMode === 'floorplan') && (
-        <section className={`mb-12 print:mb-8 break-inside-avoid`}>
-          <h2 className="text-xl font-bold mb-4 border-b-2 border-zinc-900 pb-2 print:text-base">缺失平面圖</h2>
-          <div className="relative border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 print:border-none flex items-center justify-center max-h-[70vh] print:max-h-[60vh]">
-            <img 
-              src={imageUrl} 
-              alt="Floor Plan" 
-              className="w-full h-full object-contain" 
-            />
-            {pins.map((pin, idx) => (
-              <div
-                key={pin.id}
-                className="absolute w-6 h-6 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md transform -translate-x-1/2 -translate-y-1/2"
-                style={{ 
-                  left: `${pin.x * 100}%`, 
-                  top: `${pin.y * 100}%`,
-                  WebkitPrintColorAdjust: 'exact',
-                  printColorAdjust: 'exact'
-                }}
-              >
-                {idx + 1}
-              </div>
-            ))}
+        <section className={`mb-12 print:mb-8 break-inside-avoid text-center`}>
+          <h2 className="text-xl font-bold mb-4 border-b-2 border-zinc-900 pb-2 print:text-base text-left">缺失平面圖</h2>
+          <div className="inline-block relative border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 print:border-none shadow-sm max-w-full">
+            <div className="relative inline-block">
+              <img 
+                src={imageUrl} 
+                alt="Floor Plan" 
+                className="block max-h-[70vh] print:max-h-[85vh] w-auto h-auto" 
+              />
+              {pins.map((pin, idx) => (
+                <div
+                  key={pin.id}
+                  className="absolute w-5 h-5 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md transform -translate-x-1/2 -translate-y-1/2"
+                  style={{ 
+                    left: `${pin.x * 100}%`, 
+                    top: `${pin.y * 100}%`,
+                    WebkitPrintColorAdjust: 'exact',
+                    printColorAdjust: 'exact'
+                  }}
+                >
+                  {idx + 1}
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}

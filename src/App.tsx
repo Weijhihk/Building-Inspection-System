@@ -60,7 +60,7 @@ export default function App() {
       const buildingLetter = building.replace('棟', '');
       const unitNumberStr = unitNum.replace('戶', '');
       const unitNumberFormatted = unitNumberStr.padStart(2, '0');
-      const staticImageUrl = `/Building-Inspection-System/floorplans/${projectId}_${buildingLetter}_${floor}_${unitNumberFormatted}.jpg`;
+      const staticImageUrl = `/Building-Inspection-System/floorplans/${projectId}/${projectId}_${buildingLetter}_${floor}_${unitNumberFormatted}.jpg`;
       
       setFloorPlan(staticImageUrl);
 
@@ -112,7 +112,13 @@ export default function App() {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ pins: newPins })
+          body: JSON.stringify({
+            pins: newPins,
+            projectId: selection.projectId,
+            building: selection.building,
+            floor: selection.floor,
+            unitNum: selection.unitNum,
+          })
         });
       } catch (err) {
         console.error('Failed to save pins', err);
