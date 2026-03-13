@@ -121,7 +121,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
         </div>
 
         {/* Canvas Area */}
-        <div className="flex-1 bg-white relative p-4" style={{ touchAction: 'none' }}>
+        <div className="flex-1 bg-white relative p-4 min-h-[300px] sm:min-h-[400px]" style={{ touchAction: 'none' }}>
           <div className="w-full h-full border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden cursor-crosshair relative bg-zinc-50/20">
             <canvas
               ref={canvasRef}

@@ -125,7 +125,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
 
       {/* Signature Section */}
       <section className={`mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30 no-print-shadow ${printMode === 'floorplan' ? 'print:hidden' : ''}`}>
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
           {['客戶', '業主', '承商'].map((label) => (
             <div 
               key={label} 
@@ -138,7 +138,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
                   <span className="text-[10px] text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">點擊重簽</span>
                 )}
               </div>
-              <div className="h-24 bg-white/50 border-2 border-dashed border-zinc-200 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
+              <div className="h-44 bg-white/50 border-2 border-dashed border-zinc-200 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
                 {signatures[label] ? (
                   <img src={signatures[label]} alt={`${label} 簽名`} className="h-full object-contain mix-blend-multiply" />
                 ) : (
