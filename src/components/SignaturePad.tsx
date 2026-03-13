@@ -147,8 +147,13 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
         </div>
 
         {/* Canvas Area */}
-        <div className="flex-1 bg-white relative p-4 min-h-[300px] sm:min-h-[400px]" style={{ touchAction: 'none' }}>
-          <div className="w-full h-full border-2 border-dashed border-zinc-200 rounded-2xl overflow-hidden cursor-crosshair relative bg-zinc-50/20">
+        <div className="flex-1 bg-white relative p-6 h-[400px] sm:h-[500px]" style={{ touchAction: 'none' }}>
+          <div className="w-full h-full border-2 border-dashed border-zinc-300 rounded-3xl overflow-hidden cursor-crosshair relative bg-zinc-50 shadow-inner">
+            {!hasSignature && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                <span className="text-2xl font-bold text-zinc-200 uppercase tracking-widest">請在此簽名</span>
+              </div>
+            )}
             <canvas
               ref={canvasRef}
               onMouseDown={startDrawing}
@@ -184,12 +189,12 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
               onClick={save}
               className={`flex items-center gap-2 px-8 py-3 rounded-2xl transition-all font-bold text-sm shadow-lg ${
                 hasSignature 
-                ? 'bg-zinc-900 text-white hover:bg-zinc-800 shadow-zinc-200' 
+                ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200' 
                 : 'bg-zinc-200 text-zinc-400 cursor-not-allowed shadow-none'
               }`}
             >
               <Check size={18} />
-              確認完成
+              確認保存
             </button>
           </div>
         </div>

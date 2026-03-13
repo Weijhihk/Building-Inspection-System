@@ -124,7 +124,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
         </section>
 
       {/* Signature Section */}
-      <section className={`mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30 no-print-shadow ${printMode === 'floorplan' ? 'print:hidden' : ''}`}>
+      <section className="mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30 no-print-shadow">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
           {['客戶', '業主', '承商'].map((label) => (
             <div 
