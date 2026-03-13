@@ -56,7 +56,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
 
       {/* Defect List Table */}
       {(printMode === 'all' || printMode === 'table') && (
-        <section className={`${printMode === 'all' ? 'break-before-page print:pt-4' : ''}`}>
+        <section className={`${printMode === 'all' ? 'mt-12 print:break-before-page print:pt-4' : ''}`}>
           <h2 className="text-xl font-bold mb-6 border-b-2 border-zinc-900 pb-2 print:text-base print:mb-4">缺失項目總表</h2>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-zinc-200 text-sm print:text-[12px]">
@@ -115,6 +115,23 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
           </div>
         </section>
       )}
+
+      {/* Signature Section */}
+      <section className="mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30">
+        <div className="grid grid-cols-3 gap-8">
+          {[
+            { label: '客戶', sub: '(簽章)' },
+            { label: '業主', sub: '(簽章)' },
+            { label: '承商', sub: '(簽章)' }
+          ].map((item, i) => (
+            <div key={i} className="flex flex-col">
+              <span className="text-sm font-bold text-zinc-900 mb-12">{item.label}</span>
+              <div className="border-b-2 border-zinc-300 w-full mb-1"></div>
+              <span className="text-[10px] text-zinc-400 text-right">{item.sub}</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="mt-12 text-center text-zinc-400 text-[10px] border-t pt-4 print:mt-8">
         報告結束 • 建築驗收系統產出

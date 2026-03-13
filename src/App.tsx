@@ -126,7 +126,7 @@ export default function App() {
     }
   };
 
-  const handlePrint = (mode: 'floorplan' | 'table') => {
+  const handlePrint = (mode: 'all' | 'floorplan' | 'table') => {
     setPrintMode(mode);
     setTimeout(() => {
       window.print();
@@ -257,12 +257,15 @@ export default function App() {
                 平面圖編輯
               </button>
               <button
-                onClick={() => setView('report')}
+                onClick={() => {
+                  setView('report');
+                  setPrintMode('all');
+                }}
                 className={`px-4 py-1.5 text-sm font-bold rounded-lg transition-all ${
                   view === 'report' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'
                 }`}
               >
-                缺失清單
+                缺失總覽
               </button>
             </div>
 
@@ -277,18 +280,25 @@ export default function App() {
                     <span className="hidden sm:inline">驗收完成</span>
                   </button>
                   <button
+                    onClick={() => handlePrint('all')}
+                    className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white text-sm font-bold rounded-xl hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200"
+                  >
+                    <Printer size={18} />
+                    <span className="hidden sm:inline">列印完整報告</span>
+                  </button>
+                  <button
                     onClick={() => handlePrint('floorplan')}
                     className="flex items-center gap-2 px-4 py-2 bg-white text-zinc-900 border border-zinc-200 text-sm font-bold rounded-xl hover:bg-zinc-50 transition-all shadow-sm"
                   >
                     <Printer size={18} />
-                    <span className="hidden sm:inline">列印平面圖</span>
+                    <span className="hidden sm:inline">僅列印平面圖</span>
                   </button>
                   <button
                     onClick={() => handlePrint('table')}
-                    className="flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white text-sm font-bold rounded-xl hover:bg-zinc-800 transition-all shadow-lg shadow-zinc-200"
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-zinc-900 border border-zinc-200 text-sm font-bold rounded-xl hover:bg-zinc-50 transition-all shadow-sm"
                   >
                     <Printer size={18} />
-                    <span className="hidden sm:inline">列印項目總表</span>
+                    <span className="hidden sm:inline">僅列印項目總表</span>
                   </button>
                 </>
               )}
