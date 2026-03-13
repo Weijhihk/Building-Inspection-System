@@ -44,9 +44,19 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     
-    // Handle both touch and mouse events
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+    let clientX, clientY;
+    
+    // Improved event normalization
+    if (e.touches && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
     
     return {
       x: clientX - rect.left,
@@ -55,20 +65,37 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
+    // Prevent scrolling when drawing on touch devices
+    if (e.cancelable) e.preventDefault();
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const pos = getPointerPos(e);
+    
+    // Re-ensure styles are set before starting
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y);
+    
+    // Draw a small dot immediately on start to handle single taps
+    ctx.lineTo(pos.x + 0.1, pos.y + 0.1);
+    ctx.stroke();
+    
     setIsDrawing(true);
+    setHasSignature(true);
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawing) return;
+    if (e.cancelable) e.preventDefault();
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -77,7 +104,6 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     const pos = getPointerPos(e);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
-    setHasSignature(true);
   };
 
   const endDrawing = () => {
