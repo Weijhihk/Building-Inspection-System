@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pin } from '../types';
 import { format } from 'date-fns';
+import SignaturePad from './SignaturePad';
 
 interface ReportViewProps {
   imageUrl: string;
@@ -12,6 +13,15 @@ interface ReportViewProps {
 }
 
 const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, building, floor, unit }) => {
+  const [signatures, setSignatures] = React.useState<Record<string, string>>({});
+  const [activeField, setActiveField] = React.useState<string | null>(null);
+
+  const handleSaveSignature = (dataUrl: string) => {
+    if (activeField) {
+      setSignatures(prev => ({ ...prev, [activeField]: dataUrl }));
+      setActiveField(null);
+    }
+  };
   return (
     <div className="bg-white p-8 max-w-5xl mx-auto print:p-0 print:max-w-none print:w-full">
       <div className="text-center mb-8 print:mb-6 relative">
@@ -25,9 +35,8 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
       </div>
 
       {/* Floor Plan with Pins */}
-      {(printMode === 'all' || printMode === 'floorplan') && (
-        <section className={`mb-12 print:mb-8 break-inside-avoid text-center`}>
-          <h2 className="text-xl font-bold mb-4 border-b-2 border-zinc-900 pb-2 print:text-base text-left">缺失平面圖</h2>
+      <section className={`mb-12 print:mb-8 break-inside-avoid text-center ${printMode === 'table' ? 'print:hidden' : ''}`}>
+        <h2 className="text-xl font-bold mb-4 border-b-2 border-zinc-900 pb-2 print:text-base text-left">缺失平面圖</h2>
           <div className="inline-block relative border border-zinc-200 rounded-xl overflow-hidden bg-zinc-50 print:border-none shadow-sm max-w-full">
             <div className="relative inline-block">
               <img 
@@ -52,12 +61,11 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
             </div>
           </div>
         </section>
-      )}
+      <div className="print:hidden h-4" /> {/* Spacer */}
 
       {/* Defect List Table */}
-      {(printMode === 'all' || printMode === 'table') && (
-        <section className={`${printMode === 'all' ? 'mt-12 print:break-before-page print:pt-4' : ''}`}>
-          <h2 className="text-xl font-bold mb-6 border-b-2 border-zinc-900 pb-2 print:text-base print:mb-4">缺失項目總表</h2>
+      <section className={`${printMode === 'all' ? 'mt-12 print:break-before-page print:pt-4' : ''} ${printMode === 'floorplan' ? 'print:hidden' : ''}`}>
+        <h2 className="text-xl font-bold mb-6 border-b-2 border-zinc-900 pb-2 print:text-base print:mb-4">缺失項目總表</h2>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-zinc-200 text-sm print:text-[12px]">
               <thead className="bg-zinc-100 text-zinc-900">
@@ -114,24 +122,43 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
             </table>
           </div>
         </section>
-      )}
 
       {/* Signature Section */}
-      <section className="mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30">
+      <section className={`mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30 no-print-shadow ${printMode === 'floorplan' ? 'print:hidden' : ''}`}>
         <div className="grid grid-cols-3 gap-8">
-          {[
-            { label: '客戶', sub: '(簽章)' },
-            { label: '業主', sub: '(簽章)' },
-            { label: '承商', sub: '(簽章)' }
-          ].map((item, i) => (
-            <div key={i} className="flex flex-col">
-              <span className="text-sm font-bold text-zinc-900 mb-12">{item.label}</span>
+          {['客戶', '業主', '承商'].map((label) => (
+            <div 
+              key={label} 
+              className="flex flex-col cursor-pointer hover:bg-zinc-100/50 p-2 rounded-xl transition-colors group"
+              onClick={() => setActiveField(label)}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-bold text-zinc-900">{label}</span>
+                {signatures[label] && (
+                  <span className="text-[10px] text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">點擊重簽</span>
+                )}
+              </div>
+              <div className="h-24 bg-white/50 border-2 border-dashed border-zinc-200 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
+                {signatures[label] ? (
+                  <img src={signatures[label]} alt={`${label} 簽名`} className="h-full object-contain mix-blend-multiply" />
+                ) : (
+                  <span className="text-xs text-zinc-300 italic">點擊在此簽名</span>
+                )}
+              </div>
               <div className="border-b-2 border-zinc-300 w-full mb-1"></div>
-              <span className="text-[10px] text-zinc-400 text-right">{item.sub}</span>
+              <span className="text-[10px] text-zinc-400 text-right">(簽章)</span>
             </div>
           ))}
         </div>
       </section>
+
+      {activeField && (
+        <SignaturePad 
+          title={activeField}
+          onSave={handleSaveSignature}
+          onClose={() => setActiveField(null)}
+        />
+      )}
 
       <div className="mt-12 text-center text-zinc-400 text-[10px] border-t pt-4 print:mt-8">
         報告結束 • 建築驗收系統產出
