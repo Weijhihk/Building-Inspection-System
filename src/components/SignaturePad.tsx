@@ -45,12 +45,22 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
   };
 
   const save = () => {
-    if (!sigCanvas.current || sigCanvas.current.isEmpty()) {
-      setHasSignature(false);
-      return;
+    if (!hasSignature || !sigCanvas.current) return;
+    try {
+      // Try trimmed canvas first, fall back to full canvas
+      let dataUrl: string;
+      try {
+        dataUrl = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
+      } catch {
+        dataUrl = sigCanvas.current.getCanvas().toDataURL('image/png');
+      }
+      onSave(dataUrl);
+    } catch (err) {
+      console.error('Signature save failed:', err);
+      // Last resort: get raw canvas data
+      const canvas = sigCanvas.current.getCanvas();
+      onSave(canvas.toDataURL('image/png'));
     }
-    const dataUrl = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
-    onSave(dataUrl);
   };
 
   return (
