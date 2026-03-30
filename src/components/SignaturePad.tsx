@@ -39,43 +39,29 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     return () => window.removeEventListener('resize', resizeCanvas);
   }, []);
 
-  const getPointerPos = (e: React.MouseEvent | React.TouchEvent | any) => {
+  const getPointerPos = (e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    
-    let clientX, clientY;
-    
-    // Improved event normalization
-    if (e.touches && e.touches.length > 0) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else if (e.changedTouches && e.changedTouches.length > 0) {
-      clientX = e.changedTouches[0].clientX;
-      clientY = e.changedTouches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-    
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
     };
   };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    // Prevent scrolling when drawing on touch devices
-    if (e.cancelable) e.preventDefault();
-    
+  const startDrawing = (e: React.PointerEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    
+    // Capture pointer to continue drawing even if mouse/finger moves outside
+    canvas.setPointerCapture(e.pointerId);
+    
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const pos = getPointerPos(e);
     
-    // Re-ensure styles are set before starting
+    // Explicitly set styles at the start of every stroke
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
@@ -84,7 +70,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     ctx.beginPath();
     ctx.moveTo(pos.x, pos.y);
     
-    // Draw a small dot immediately on start to handle single taps
+    // Immediate dot for single taps/clicks
     ctx.lineTo(pos.x + 0.1, pos.y + 0.1);
     ctx.stroke();
     
@@ -92,9 +78,8 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     setHasSignature(true);
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+  const draw = (e: React.PointerEvent) => {
     if (!isDrawing) return;
-    if (e.cancelable) e.preventDefault();
     
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -106,7 +91,10 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     ctx.stroke();
   };
 
-  const endDrawing = () => {
+  const endDrawing = (e: React.PointerEvent) => {
+    if (isDrawing && canvasRef.current) {
+      canvasRef.current.releasePointerCapture(e.pointerId);
+    }
     setIsDrawing(false);
   };
 
@@ -147,7 +135,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
         </div>
 
         {/* Canvas Area */}
-        <div className="flex-1 bg-white relative p-6 h-[400px] sm:h-[500px]" style={{ touchAction: 'none' }}>
+        <div className="flex-1 bg-white relative p-6 h-[400px] sm:h-[500px]">
           <div className="w-full h-full border-2 border-dashed border-zinc-300 rounded-3xl overflow-hidden cursor-crosshair relative bg-zinc-50 shadow-inner">
             {!hasSignature && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
@@ -156,14 +144,13 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
             )}
             <canvas
               ref={canvasRef}
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={endDrawing}
-              onMouseLeave={endDrawing}
-              onTouchStart={startDrawing}
-              onTouchMove={draw}
-              onTouchEnd={endDrawing}
+              onPointerDown={startDrawing}
+              onPointerMove={draw}
+              onPointerUp={endDrawing}
+              onPointerLeave={endDrawing}
+              onPointerCancel={endDrawing}
               className="absolute inset-0 block w-full h-full"
+              style={{ touchAction: 'none' }}
             />
           </div>
         </div>
