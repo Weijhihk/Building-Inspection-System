@@ -176,6 +176,15 @@ const initDB = async () => {
         role TEXT,
         name TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS unit_signatures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        unit_id TEXT NOT NULL,
+        field TEXT NOT NULL,
+        signature_data TEXT NOT NULL,
+        signed_at INTEGER,
+        UNIQUE(unit_id, field)
+      );
     `);
 
     // --- Seed Data ---
@@ -516,6 +525,33 @@ app.get('/api/admin/projects/:projectId/defects', adminOnly, async (req, res) =>
       return { ...row, photos: photos.map(ph => ph.photo_data) };
     }));
     res.json(defects);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- Signature Persistence ---
+app.get('/api/signatures/:unitId', async (req, res) => {
+  const { unitId } = req.params;
+  try {
+    const result = await pool.query('SELECT field, signature_data FROM unit_signatures WHERE unit_id = $1', [unitId]);
+    const signatures = {};
+    for (const row of result.rows) {
+      signatures[row.field] = row.signature_data;
+    }
+    res.json(signatures);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/signatures/:unitId', async (req, res) => {
+  const { unitId } = req.params;
+  const { field, signatureData } = req.body;
+  if (!field || !signatureData) return res.status(400).json({ error: 'field and signatureData are required' });
+  try {
+    await pool.query(
+      `INSERT INTO unit_signatures (unit_id, field, signature_data, signed_at) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (unit_id, field) DO UPDATE SET signature_data = $3, signed_at = $4`,
+      [unitId, field, signatureData, Date.now()]
+    );
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

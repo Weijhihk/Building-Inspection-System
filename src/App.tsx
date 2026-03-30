@@ -75,6 +75,17 @@ export default function App() {
         });
         const pinsData = await resPins.json();
         setPins(pinsData || []);
+
+        // Load saved signatures for this unit
+        try {
+          const sigRes = await fetch(`/api/signatures/${unitData.id}`);
+          if (sigRes.ok) {
+            const savedSigs = await sigRes.json();
+            setSignatures(savedSigs || {});
+          }
+        } catch (sigErr) {
+          console.error('Failed to load signatures', sigErr);
+        }
       } else {
         setPins([]);
       }
@@ -392,12 +403,22 @@ export default function App() {
       )}
 
       {/* Signature Pad Modal – rendered at document root level to avoid transform clipping */}
-      {activeSignatureField && (
+      {activeSignatureField && selection && (
         <SignaturePad
           title={activeSignatureField}
-          onSave={(dataUrl: string) => {
+          onSave={async (dataUrl: string) => {
             setSignatures(prev => ({ ...prev, [activeSignatureField]: dataUrl }));
             setActiveSignatureField(null);
+            // Persist to server
+            try {
+              await fetch(`/api/signatures/${selection.unitId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: activeSignatureField, signatureData: dataUrl })
+              });
+            } catch (err) {
+              console.error('Failed to save signature', err);
+            }
           }}
           onClose={() => setActiveSignatureField(null)}
         />
