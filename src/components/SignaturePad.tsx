@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { X, RotateCcw, Check } from 'lucide-react';
+import SignatureCanvas from 'react-signature-canvas';
 
 interface SignaturePadProps {
   title: string;
@@ -8,122 +9,37 @@ interface SignaturePadProps {
 }
 
 const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const sigCanvas = useRef<SignatureCanvas>(null);
   const [hasSignature, setHasSignature] = useState(false);
-  
-  // Use refs for drawing state to avoid React render cycle closures
-  const isDrawingRef = useRef(false);
-  const lastPosRef = useRef({ x: 0, y: 0 });
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Handle responsive resizing
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const resizeCanvas = () => {
-      const container = canvas.parentElement;
-      if (container) {
-        // Save current content if needed, but resize clears canvas
-        canvas.width = container.clientWidth;
-        canvas.height = container.clientHeight;
-        
-        // Context properties are lost on resize
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.strokeStyle = '#000000';
-          ctx.lineWidth = 3;
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
-        }
+    const updateSize = () => {
+      if (containerRef.current) {
+        setCanvasSize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight
+        });
       }
     };
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  const getPointerPos = (e: React.PointerEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
-  };
-
-  const startDrawing = (e: React.PointerEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    // Ensure we capture pointer events even if moving off canvas
-    canvas.setPointerCapture(e.pointerId);
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const pos = getPointerPos(e);
-    lastPosRef.current = pos;
-    isDrawingRef.current = true;
-    
-    // Set styles
-    ctx.strokeStyle = '#000000';
-    ctx.fillStyle = '#000000';
-    ctx.lineWidth = 3;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    
-    // Draw a small dot immediately in case it's just a tap
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    
-    setHasSignature(true);
-  };
-
-  const draw = (e: React.PointerEvent) => {
-    if (!isDrawingRef.current) return;
-    
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const pos = getPointerPos(e);
-    
-    ctx.beginPath();
-    ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    
-    lastPosRef.current = pos;
-  };
-
-  const endDrawing = (e: React.PointerEvent) => {
-    if (isDrawingRef.current && canvasRef.current) {
-      try {
-        canvasRef.current.releasePointerCapture(e.pointerId);
-      } catch (err) {
-        // Ignore if pointer capture fails to release (e.g. pointer lost)
-      }
-    }
-    isDrawingRef.current = false;
-  };
-
   const clear = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    sigCanvas.current?.clear();
     setHasSignature(false);
   };
 
   const save = () => {
-    if (!hasSignature) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
+    if (!hasSignature || !sigCanvas.current) return;
+    
+    // Get the signature as a base64 DataURL (trimmed to remove empty margins)
+    const dataUrl = sigCanvas.current.getTrimmedCanvas().toDataURL('image/png');
     onSave(dataUrl);
   };
 
@@ -134,7 +50,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
         <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
           <div className="flex flex-col">
             <h3 className="text-xl font-bold text-zinc-900">{title} 電子簽名</h3>
-            <span className="text-xs text-zinc-400">請在下方空白區域內簽署</span>
+            <span className="text-xs text-zinc-400 font-medium">請在下方區域內簽署 (支援貝茲曲線及壓力感應)</span>
           </div>
           <button 
             onClick={onClose}
@@ -146,21 +62,28 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
 
         {/* Canvas Area */}
         <div className="flex-1 bg-white relative p-6 h-[400px]">
-          <div className="w-full h-full border-2 border-dashed border-zinc-300 rounded-3xl overflow-hidden cursor-crosshair relative bg-zinc-50 shadow-inner">
+          <div 
+            ref={containerRef}
+            className="w-full h-full border-2 border-dashed border-zinc-300 rounded-3xl overflow-hidden cursor-crosshair relative bg-zinc-50 shadow-inner"
+          >
             {!hasSignature && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
                 <span className="text-2xl font-bold text-zinc-200 uppercase tracking-widest">請在此簽名</span>
               </div>
             )}
-            <canvas
-              ref={canvasRef}
-              onPointerDown={startDrawing}
-              onPointerMove={draw}
-              onPointerUp={endDrawing}
-              onPointerLeave={endDrawing}
-              onPointerCancel={endDrawing}
-              className="absolute inset-0 block w-full h-full"
-              style={{ touchAction: 'none' }}
+            
+            <SignatureCanvas 
+              ref={sigCanvas}
+              penColor="#000000"
+              canvasProps={{
+                width: canvasSize.width,
+                height: canvasSize.height,
+                className: 'sigCanvas absolute inset-0 block w-full h-full'
+              }}
+              onBegin={() => setHasSignature(true)}
+              velocityFilterWeight={0.7} // Smoothing parameter
+              minWidth={0.5}
+              maxWidth={3.0}
             />
           </div>
         </div>
