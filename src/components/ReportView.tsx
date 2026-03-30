@@ -1,6 +1,12 @@
 import React from 'react';
 import { Pin } from '../types';
 import { format } from 'date-fns';
+import { Lock } from 'lucide-react';
+
+interface SignatureInfo {
+  data: string;
+  locked: boolean;
+}
 
 interface ReportViewProps {
   imageUrl: string;
@@ -9,7 +15,7 @@ interface ReportViewProps {
   building?: string;
   floor?: string;
   unit?: string;
-  signatures?: Record<string, string>;
+  signatures?: Record<string, SignatureInfo>;
   onOpenSignature?: (field: string) => void;
 }
 
@@ -53,7 +59,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
             </div>
           </div>
         </section>
-      <div className="print:hidden h-4" /> {/* Spacer */}
+      <div className="print:hidden h-4" />
 
       {/* Defect List Table */}
       <section className={`${printMode === 'all' ? 'mt-12 print:break-before-page print:pt-4' : ''} ${printMode === 'floorplan' ? 'print:hidden' : ''}`}>
@@ -118,29 +124,52 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
       {/* Signature Section */}
       <section className="mt-16 mb-8 break-inside-avoid shadow-sm border border-zinc-100 p-8 rounded-2xl bg-zinc-50/30 no-print-shadow">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
-          {['客戶', '業主', '承商'].map((label) => (
-            <div 
-              key={label} 
-              className="flex flex-col cursor-pointer hover:bg-zinc-100/50 p-2 rounded-xl transition-colors group"
-              onClick={() => onOpenSignature?.(label)}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-bold text-zinc-900">{label}</span>
-                {signatures[label] && (
-                  <span className="text-[10px] text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">點擊重簽</span>
-                )}
+          {['客戶', '業主', '承商'].map((label) => {
+            const sig = signatures[label];
+            const isLocked = sig?.locked === true;
+            const hasData = !!sig?.data;
+
+            return (
+              <div 
+                key={label} 
+                className={`flex flex-col p-2 rounded-xl transition-colors ${
+                  isLocked 
+                    ? 'bg-green-50/50' 
+                    : 'cursor-pointer hover:bg-zinc-100/50 group'
+                }`}
+                onClick={() => {
+                  if (!isLocked) {
+                    onOpenSignature?.(label);
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold text-zinc-900">{label}</span>
+                  {isLocked ? (
+                    <span className="flex items-center gap-1 text-[10px] text-green-600 font-bold bg-green-100 px-2 py-0.5 rounded-full">
+                      <Lock size={10} />
+                      已鎖定
+                    </span>
+                  ) : hasData ? (
+                    <span className="text-[10px] text-blue-500 font-bold opacity-0 group-hover:opacity-100 transition-opacity">點擊重簽</span>
+                  ) : null}
+                </div>
+                
+                <div className="h-44 bg-white/50 border-2 border-dashed border-zinc-200 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
+                  {hasData ? (
+                    <img src={sig.data} alt={`${label} 簽名`} className="h-full object-contain mix-blend-multiply" />
+                  ) : (
+                    <span className="text-xs text-zinc-300 italic">
+                      {isLocked ? '(無簽名資料)' : '點擊在此簽名'}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="border-b-2 border-zinc-300 w-full mb-1"></div>
+                <span className="text-[10px] text-zinc-400 text-right">(簽章)</span>
               </div>
-              <div className="h-44 bg-white/50 border-2 border-dashed border-zinc-200 rounded-xl mb-2 flex items-center justify-center overflow-hidden relative">
-                {signatures[label] ? (
-                  <img src={signatures[label]} alt={`${label} 簽名`} className="h-full object-contain mix-blend-multiply" />
-                ) : (
-                  <span className="text-xs text-zinc-300 italic">點擊在此簽名</span>
-                )}
-              </div>
-              <div className="border-b-2 border-zinc-300 w-full mb-1"></div>
-              <span className="text-[10px] text-zinc-400 text-right">(簽章)</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 

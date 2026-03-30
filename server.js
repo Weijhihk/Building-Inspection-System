@@ -183,6 +183,7 @@ const initDB = async () => {
         field TEXT NOT NULL,
         signature_data TEXT NOT NULL,
         signed_at INTEGER,
+        locked INTEGER DEFAULT 0,
         UNIQUE(unit_id, field)
       );
     `);
@@ -213,6 +214,13 @@ const initDB = async () => {
     pool.query(`
       INSERT INTO projects (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING
     `, ['KY70', '忠孝大院案']);
+
+    // Migration: add 'locked' column if it doesn't exist (for existing databases)
+    try {
+      db.exec('ALTER TABLE unit_signatures ADD COLUMN locked INTEGER DEFAULT 0');
+    } catch (e) {
+      // Column already exists, ignore
+    }
 
     console.log("SQLite Initialization Complete");
   } catch (err) {
@@ -532,10 +540,17 @@ app.get('/api/admin/projects/:projectId/defects', adminOnly, async (req, res) =>
 app.get('/api/signatures/:unitId', async (req, res) => {
   const { unitId } = req.params;
   try {
-    const result = await pool.query('SELECT field, signature_data FROM unit_signatures WHERE unit_id = $1', [unitId]);
+    const result = await pool.query(
+      'SELECT field, signature_data, locked FROM unit_signatures WHERE unit_id = $1',
+      [unitId]
+    );
+    // Return { field: { data, locked } } format
     const signatures = {};
     for (const row of result.rows) {
-      signatures[row.field] = row.signature_data;
+      signatures[row.field] = {
+        data: row.signature_data,
+        locked: row.locked === 1
+      };
     }
     res.json(signatures);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -543,13 +558,14 @@ app.get('/api/signatures/:unitId', async (req, res) => {
 
 app.post('/api/signatures/:unitId', async (req, res) => {
   const { unitId } = req.params;
-  const { field, signatureData } = req.body;
+  const { field, signatureData, locked } = req.body;
   if (!field || !signatureData) return res.status(400).json({ error: 'field and signatureData are required' });
   try {
+    const lockedVal = locked ? 1 : 0;
     await pool.query(
-      `INSERT INTO unit_signatures (unit_id, field, signature_data, signed_at) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (unit_id, field) DO UPDATE SET signature_data = $3, signed_at = $4`,
-      [unitId, field, signatureData, Date.now()]
+      `INSERT INTO unit_signatures (unit_id, field, signature_data, signed_at, locked) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (unit_id, field) DO UPDATE SET signature_data = $3, signed_at = $4, locked = $5`,
+      [unitId, field, signatureData, Date.now(), lockedVal]
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

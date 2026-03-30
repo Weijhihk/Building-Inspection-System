@@ -27,7 +27,7 @@ export default function App() {
   const [pins, setPins] = useState<Pin[]>([]);
   const [selectedPin, setSelectedPin] = useState<Pin | null>(null);
   const [printMode, setPrintMode] = useState<'all' | 'floorplan' | 'table'>('all');
-  const [signatures, setSignatures] = useState<Record<string, string>>({});
+  const [signatures, setSignatures] = useState<Record<string, { data: string; locked: boolean }>>({}); 
   const [activeSignatureField, setActiveSignatureField] = useState<string | null>(null);
 
   const handleLogin = (newToken: string, newUser: any) => {
@@ -402,19 +402,31 @@ export default function App() {
         </>
       )}
 
-      {/* Signature Pad Modal – rendered at document root level to avoid transform clipping */}
       {activeSignatureField && selection && (
         <SignaturePad
           title={activeSignatureField}
           onSave={async (dataUrl: string) => {
-            setSignatures(prev => ({ ...prev, [activeSignatureField]: dataUrl }));
+            // Ask if user wants to lock this signature
+            const shouldLock = window.confirm(
+              `是否鎖定「${activeSignatureField}」的簽名？\n\n鎖定後將無法再修改此簽名。`
+            );
+            
+            setSignatures(prev => ({
+              ...prev,
+              [activeSignatureField]: { data: dataUrl, locked: shouldLock }
+            }));
             setActiveSignatureField(null);
+
             // Persist to server
             try {
               await fetch(`/api/signatures/${selection.unitId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ field: activeSignatureField, signatureData: dataUrl })
+                body: JSON.stringify({
+                  field: activeSignatureField,
+                  signatureData: dataUrl,
+                  locked: shouldLock
+                })
               });
             } catch (err) {
               console.error('Failed to save signature', err);
