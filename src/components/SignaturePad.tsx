@@ -9,21 +9,24 @@ interface SignaturePadProps {
 
 const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(false);
+  
+  // Use refs for drawing state to avoid React render cycle closures
+  const isDrawingRef = useRef(false);
+  const lastPosRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Adjust canvas size to match display size
     const resizeCanvas = () => {
       const container = canvas.parentElement;
       if (container) {
+        // Save current content if needed, but resize clears canvas
         canvas.width = container.clientWidth;
         canvas.height = container.clientHeight;
         
-        // Initial setup for smoothing
+        // Context properties are lost on resize
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.strokeStyle = '#000000';
@@ -53,33 +56,33 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    // Capture pointer to continue drawing even if mouse/finger moves outside
+    // Ensure we capture pointer events even if moving off canvas
     canvas.setPointerCapture(e.pointerId);
     
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const pos = getPointerPos(e);
+    lastPosRef.current = pos;
+    isDrawingRef.current = true;
     
-    // Explicitly set styles at the start of every stroke
+    // Set styles
     ctx.strokeStyle = '#000000';
+    ctx.fillStyle = '#000000';
     ctx.lineWidth = 3;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     
+    // Draw a small dot immediately in case it's just a tap
     ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
+    ctx.arc(pos.x, pos.y, 1.5, 0, Math.PI * 2);
+    ctx.fill();
     
-    // Immediate dot for single taps/clicks
-    ctx.lineTo(pos.x + 0.1, pos.y + 0.1);
-    ctx.stroke();
-    
-    setIsDrawing(true);
     setHasSignature(true);
   };
 
   const draw = (e: React.PointerEvent) => {
-    if (!isDrawing) return;
+    if (!isDrawingRef.current) return;
     
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -87,15 +90,24 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     if (!ctx) return;
 
     const pos = getPointerPos(e);
+    
+    ctx.beginPath();
+    ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
     ctx.lineTo(pos.x, pos.y);
     ctx.stroke();
+    
+    lastPosRef.current = pos;
   };
 
   const endDrawing = (e: React.PointerEvent) => {
-    if (isDrawing && canvasRef.current) {
-      canvasRef.current.releasePointerCapture(e.pointerId);
+    if (isDrawingRef.current && canvasRef.current) {
+      try {
+        canvasRef.current.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // Ignore if pointer capture fails to release (e.g. pointer lost)
+      }
     }
-    setIsDrawing(false);
+    isDrawingRef.current = false;
   };
 
   const clear = () => {
@@ -111,8 +123,6 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
     if (!hasSignature) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    
-    // Get the data URL
     const dataUrl = canvas.toDataURL('image/png');
     onSave(dataUrl);
   };
@@ -135,7 +145,7 @@ const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) =
         </div>
 
         {/* Canvas Area */}
-        <div className="flex-1 bg-white relative p-6 h-[400px] sm:h-[500px]">
+        <div className="flex-1 bg-white relative p-6 h-[400px]">
           <div className="w-full h-full border-2 border-dashed border-zinc-300 rounded-3xl overflow-hidden cursor-crosshair relative bg-zinc-50 shadow-inner">
             {!hasSignature && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
