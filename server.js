@@ -562,10 +562,11 @@ app.post('/api/signatures/:unitId', async (req, res) => {
   if (!field || !signatureData) return res.status(400).json({ error: 'field and signatureData are required' });
   try {
     const lockedVal = locked ? 1 : 0;
+    const now = Date.now();
     await pool.query(
       `INSERT INTO unit_signatures (unit_id, field, signature_data, signed_at, locked) VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (unit_id, field) DO UPDATE SET signature_data = $3, signed_at = $4, locked = $5`,
-      [unitId, field, signatureData, Date.now(), lockedVal]
+       ON CONFLICT (unit_id, field) DO UPDATE SET signature_data = $6, signed_at = $7, locked = $8`,
+      [unitId, field, signatureData, now, lockedVal, signatureData, now, lockedVal]
     );
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
