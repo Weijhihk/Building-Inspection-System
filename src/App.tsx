@@ -46,6 +46,7 @@ export default function App() {
     setFloorPlan(null);
     setPins([]);
     setSelectedPin(null);
+    setSignatures({});
     setView('selector');
   };
 
@@ -59,6 +60,7 @@ export default function App() {
       
       const sessionSelection = { projectId, building, floor, unitNum, unitId: unitData.id };
       setSelection(sessionSelection);
+      setSignatures({});
 
       const buildingLetter = building.replace('棟', '');
       const unitNumberStr = unitNum.replace('戶', '');
