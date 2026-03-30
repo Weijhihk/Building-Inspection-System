@@ -1,7 +1,6 @@
 import React from 'react';
 import { Pin } from '../types';
 import { format } from 'date-fns';
-import SignaturePad from './SignaturePad';
 
 interface ReportViewProps {
   imageUrl: string;
@@ -10,18 +9,11 @@ interface ReportViewProps {
   building?: string;
   floor?: string;
   unit?: string;
+  signatures?: Record<string, string>;
+  onOpenSignature?: (field: string) => void;
 }
 
-const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, building, floor, unit }) => {
-  const [signatures, setSignatures] = React.useState<Record<string, string>>({});
-  const [activeField, setActiveField] = React.useState<string | null>(null);
-
-  const handleSaveSignature = (dataUrl: string) => {
-    if (activeField) {
-      setSignatures(prev => ({ ...prev, [activeField]: dataUrl }));
-      setActiveField(null);
-    }
-  };
+const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, building, floor, unit, signatures = {}, onOpenSignature }) => {
   return (
     <div className="bg-white p-8 max-w-5xl mx-auto print:p-0 print:max-w-none print:w-full">
       <div className="text-center mb-8 print:mb-6 relative">
@@ -130,7 +122,7 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
             <div 
               key={label} 
               className="flex flex-col cursor-pointer hover:bg-zinc-100/50 p-2 rounded-xl transition-colors group"
-              onClick={() => setActiveField(label)}
+              onClick={() => onOpenSignature?.(label)}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-bold text-zinc-900">{label}</span>
@@ -151,14 +143,6 @@ const ReportView: React.FC<ReportViewProps> = ({ imageUrl, pins, printMode, buil
           ))}
         </div>
       </section>
-
-      {activeField && (
-        <SignaturePad 
-          title={activeField}
-          onSave={handleSaveSignature}
-          onClose={() => setActiveField(null)}
-        />
-      )}
 
       <div className="mt-12 text-center text-zinc-400 text-[10px] border-t pt-4 print:mt-8">
         報告結束 • 建築驗收系統產出

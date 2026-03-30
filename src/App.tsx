@@ -4,6 +4,7 @@ import DefectForm from './components/DefectForm';
 import ReportView from './components/ReportView';
 import ProjectSelector from './components/ProjectSelector';
 import Login from './components/Login';
+import SignaturePad from './components/SignaturePad';
 import { Pin, DefectItem } from './types';
 import { Building2, ChevronLeft, LogOut, UploadCloud, Printer, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -26,6 +27,8 @@ export default function App() {
   const [pins, setPins] = useState<Pin[]>([]);
   const [selectedPin, setSelectedPin] = useState<Pin | null>(null);
   const [printMode, setPrintMode] = useState<'all' | 'floorplan' | 'table'>('all');
+  const [signatures, setSignatures] = useState<Record<string, string>>({});
+  const [activeSignatureField, setActiveSignatureField] = useState<string | null>(null);
 
   const handleLogin = (newToken: string, newUser: any) => {
     setToken(newToken);
@@ -343,6 +346,8 @@ export default function App() {
                       building={selection.building}
                       floor={selection.floor}
                       unit={selection.unitNum}
+                      signatures={signatures}
+                      onOpenSignature={(field: string) => setActiveSignatureField(field)}
                     />
                   </motion.div>
                 )}
@@ -382,6 +387,18 @@ export default function App() {
             </div>
           )}
         </>
+      )}
+
+      {/* Signature Pad Modal – rendered at document root level to avoid transform clipping */}
+      {activeSignatureField && (
+        <SignaturePad
+          title={activeSignatureField}
+          onSave={(dataUrl: string) => {
+            setSignatures(prev => ({ ...prev, [activeSignatureField]: dataUrl }));
+            setActiveSignatureField(null);
+          }}
+          onClose={() => setActiveSignatureField(null)}
+        />
       )}
     </div>
   );
