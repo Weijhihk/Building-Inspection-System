@@ -22,13 +22,9 @@ A robust building inspection system designed for enterprise-scale quality contro
 
 ### 3. 登入測試帳號
 * **系統管理員 (Admin)**
-  * 帳號：`admin`
-  * 密碼：`admin123`
-  * 權限：完整存取，可進入後台管理專案鎖定與帳號。
+  * 帳號與密碼請參考 `.env` 或 `.env.example` 中的 `INITIAL_ADMIN_PASSWORD` (預設為 admin / admin123)。
 * **現場巡檢員 (User)**
-  * 帳號：`user`
-  * 密碼：`user123`
-  * 權限：僅能進行平面圖標記與缺失上傳。
+  * 帳號與密碼請參考 `.env` 或 `.env.example` 中的 `INITIAL_USER_PASSWORD` (預設為 user / user123)。
 
 ### 4. 主要功能模組
 * **驗收系統 (Front-end)**:
@@ -58,8 +54,8 @@ A robust building inspection system designed for enterprise-scale quality contro
    * The system runs concurrently (Vite on port 3000, Express on 3001).
 
 ### 3. Demo Accounts
-* **Admin**: `admin` / `admin123`
-* **Inspector**: `user` / `user123`
+* **Admin**: Reference `INITIAL_ADMIN_PASSWORD` in `.env`.
+* **Inspector**: Reference `INITIAL_USER_PASSWORD` in `.env`.
 
 ### 4. Key Features
 * **Inspection Flow**: Floor plan marking, photo uploads, and unit locking.

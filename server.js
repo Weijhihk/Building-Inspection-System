@@ -10,7 +10,10 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'inspection_system_default_secret_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.warn('[Security Warning] JWT_SECRET is not defined in .env. Falling back to an insecure default for development only.');
+}
 
 // SQLite Database Configuration
 const db = new Database('database.sqlite');
@@ -180,8 +183,8 @@ const initDB = async () => {
       return crypto.createHash('sha256').update(password + 'inspection_salt').digest('hex');
     };
 
-    const ADMIN_PASSWORD = process.env.INITIAL_ADMIN_PASSWORD || 'admin123';
-    const USER_PASSWORD = process.env.INITIAL_USER_PASSWORD || 'user123';
+    const ADMIN_PASSWORD = process.env.INITIAL_ADMIN_PASSWORD || 'admin_change_immediately';
+    const USER_PASSWORD = process.env.INITIAL_USER_PASSWORD || 'user_change_immediately';
 
     pool.query(`
       INSERT INTO users (id, username, password, role, name) 
