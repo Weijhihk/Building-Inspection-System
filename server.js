@@ -572,6 +572,32 @@ app.post('/api/signatures/:unitId', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- Defect Category Management ---
+const DEFECT_CATEGORIES_PATH = path.join(path.dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Z]:)/, '$1'), 'public', 'defect_categories.json');
+
+app.get('/api/defect-categories', async (req, res) => {
+  try {
+    const data = fs.readFileSync(DEFECT_CATEGORIES_PATH, 'utf-8');
+    res.json(JSON.parse(data));
+  } catch (err) {
+    // If file doesn't exist, return empty structure
+    res.json({ version: 1, categories: [] });
+  }
+});
+
+app.put('/api/defect-categories', adminOnly, async (req, res) => {
+  try {
+    const data = req.body;
+    if (!data || !Array.isArray(data.categories)) {
+      return res.status(400).json({ error: 'Invalid format: categories array required' });
+    }
+    fs.writeFileSync(DEFECT_CATEGORIES_PATH, JSON.stringify(data, null, 2), 'utf-8');
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`SQLite-backed Server running at http://localhost:${port}`);
 });

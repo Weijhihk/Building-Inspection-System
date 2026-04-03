@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
-import { Building2, Layers, Unlock, Lock, AlertCircle, CheckCircle2, LogOut, ArrowLeft, Users, UserPlus, Edit2, Trash2, X, Shield, Key, Printer, SortAsc } from 'lucide-react';
+import DefectCategoryManager from './components/DefectCategoryManager';
+import { Building2, Layers, Unlock, Lock, AlertCircle, CheckCircle2, LogOut, ArrowLeft, Users, UserPlus, Edit2, Trash2, X, Shield, Key, Printer, SortAsc, FolderTree } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Project {
@@ -25,7 +26,7 @@ export default function AdminApp() {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('A棟');
   const [defectCounts, setDefectCounts] = useState<Record<string, { defectCount: number, isInspected: boolean, unitId: string }>>({});
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'projects'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'projects' | 'defect-categories'>('dashboard');
   const [users, setUsers] = useState<any[]>([]);
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -483,6 +484,15 @@ export default function AdminApp() {
             <Layers size={18} />
             <span className="font-bold text-sm">專案管理</span>
           </button>
+          <button
+            onClick={() => setActiveTab('defect-categories')}
+            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${
+              activeTab === 'defect-categories' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800/50 text-slate-400'
+            }`}
+          >
+            <FolderTree size={18} />
+            <span className="font-bold text-sm">缺失項目管理</span>
+          </button>
         </nav>
 
         {activeTab === 'dashboard' && (
@@ -642,6 +652,8 @@ export default function AdminApp() {
               </div>
             </div>
           </motion.div>
+        ) : activeTab === 'defect-categories' ? (
+          <DefectCategoryManager token={token} />
         ) : activeTab === 'projects' ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-8">

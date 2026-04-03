@@ -16,11 +16,120 @@
   }
 }
 
+/* ══════════════════════════════════════
+   Screen: make the print-page-table
+   look like normal block divs
+   ══════════════════════════════════════ */
+.print-page-table,
+.print-page-table > thead,
+.print-page-table > tbody,
+.print-page-table > tfoot,
+.print-page-table > thead > tr,
+.print-page-table > tbody > tr,
+.print-page-table > tfoot > tr,
+.print-page-table > thead > tr > td,
+.print-page-table > tbody > tr > td,
+.print-page-table > tfoot > tr > td {
+  display: block;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Screen: hide the tfoot (print-only signature) */
+.print-page-table > tfoot {
+  display: none;
+}
+
+/* ══════════════════════════════════════
+   Print-only helpers
+   ══════════════════════════════════════ */
+.print-only {
+  display: none !important;
+}
+
+/* ══════════════════════════════════════
+   Report page header styling
+   ══════════════════════════════════════ */
+.print-page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 12px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid #222;
+}
+.print-page-header-inner {
+  text-align: left;
+}
+.print-page-header-info {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════
+   Print signature inner styling
+   ══════════════════════════════════════ */
+.print-sig-inner {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  border-top: 2px solid #333;
+  padding-top: 12px;
+}
+.print-sig-col {
+  flex: 1;
+  text-align: center;
+}
+.print-sig-label {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: #333;
+}
+.print-sig-img-box {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.print-sig-img {
+  max-height: 56px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.print-sig-empty {
+  font-size: 10px;
+  color: #bbb;
+  font-style: italic;
+}
+.print-sig-line {
+  border-bottom: 1.5px solid #555;
+  margin-top: 4px;
+}
+.print-sig-stamp {
+  font-size: 9px;
+  color: #999;
+}
+
+/* ══════════════════════════════════════
+   @media print
+   ══════════════════════════════════════ */
 @media print {
   @page {
     size: A4 portrait;
     margin: 1.5cm;
+
+    /* ── Page number at bottom-center of every page ── */
+    @bottom-center {
+      content: "— 第 " counter(page) " 頁 / 共 " counter(pages) " 頁 —";
+      font-size: 9px;
+      color: #999;
+      font-family: "Inter", "Noto Sans TC", sans-serif;
+    }
   }
+
+  /* ── Basic resets ── */
   .no-print {
     display: none !important;
   }
@@ -31,16 +140,98 @@
     background: white !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+    overflow: visible !important;
   }
+
+  /* ── Page-break helpers ── */
   .break-before-page {
     break-before: page;
   }
   .break-inside-avoid {
     break-inside: avoid;
   }
-}
 
-.print-only {
-  display: none;
-}
+  /* ── Kill scroll containers on print ── */
+  *,
+  *::before,
+  *::after {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .print-no-overflow {
+    overflow: visible !important;
+  }
 
+  /* ── Report root container ── */
+  .print-report-root {
+    padding: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* ──────────────────────────────────────
+     Table layout for repeating header
+     and footer on every printed page.
+     Browser repeats <thead> and <tfoot>
+     and reserves space automatically.
+     ────────────────────────────────────── */
+  .print-page-table {
+    display: table !important;
+    width: 100% !important;
+    border-collapse: collapse;
+    border: none !important;
+  }
+  .print-page-table > thead {
+    display: table-header-group !important;
+  }
+  .print-page-table > tbody {
+    display: table-row-group !important;
+  }
+  .print-page-table > tfoot {
+    display: table-footer-group !important;
+  }
+  .print-page-table > thead > tr,
+  .print-page-table > tbody > tr,
+  .print-page-table > tfoot > tr {
+    display: table-row !important;
+    border: none !important;
+  }
+  .print-page-table > thead > tr > td,
+  .print-page-table > tbody > tr > td,
+  .print-page-table > tfoot > tr > td {
+    display: table-cell !important;
+    border: none !important;
+    padding: 0 !important;
+    width: 100%;
+  }
+
+  /* ── Print page header styling ── */
+  .print-page-header {
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+  }
+
+  /* ── Inner defect table styling for print ── */
+  .print-report-root table:not(.print-page-table) {
+    page-break-inside: auto;
+  }
+  .print-report-root table:not(.print-page-table) thead {
+    display: table-header-group;
+  }
+  .print-report-root table:not(.print-page-table) tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* ── Footer text (screen only) ── */
+  .print-footer {
+    display: none !important;
+  }
+
+  /* ── Remove decorative shadows ── */
+  .no-print-shadow {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}
