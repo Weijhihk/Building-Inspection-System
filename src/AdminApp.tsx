@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import DefectCategoryManager from './components/DefectCategoryManager';
 import DefectAnalysis from './components/DefectAnalysis';
-import { Building2, Layers, Unlock, Lock, AlertCircle, CheckCircle2, LogOut, ArrowLeft, Users, UserPlus, Edit2, Trash2, X, Shield, Key, Printer, SortAsc, FolderTree, BarChart3 } from 'lucide-react';
+import FloorPlanManager from './components/FloorPlanManager';
+import { Building2, Layers, Unlock, Lock, AlertCircle, CheckCircle2, LogOut, ArrowLeft, Users, UserPlus, Edit2, Trash2, X, Shield, Key, Printer, SortAsc, FolderTree, BarChart3, FileImage } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Project {
@@ -27,7 +28,7 @@ export default function AdminApp() {
   const [selectedBuilding, setSelectedBuilding] = useState<string>('A棟');
   const [defectCounts, setDefectCounts] = useState<Record<string, { defectCount: number, isInspected: boolean, unitId: string }>>({});
   
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'projects' | 'defect-categories' | 'defect-analysis'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'projects' | 'defect-categories' | 'defect-analysis' | 'floorplan-manager'>('dashboard');
   const [users, setUsers] = useState<any[]>([]);
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -503,6 +504,15 @@ export default function AdminApp() {
             <BarChart3 size={18} />
             <span className="font-bold text-sm">缺失統計分析</span>
           </button>
+          <button
+            onClick={() => setActiveTab('floorplan-manager')}
+            className={`w-full text-left px-4 py-3 rounded-xl flex items-center gap-3 transition-colors ${
+              activeTab === 'floorplan-manager' ? 'bg-slate-800 text-white' : 'hover:bg-slate-800/50 text-slate-400'
+            }`}
+          >
+            <FileImage size={18} />
+            <span className="font-bold text-sm">平面圖檔管理</span>
+          </button>
         </nav>
 
         {activeTab === 'dashboard' && (
@@ -666,6 +676,8 @@ export default function AdminApp() {
           <DefectCategoryManager token={token} />
         ) : activeTab === 'defect-analysis' ? (
           <DefectAnalysis token={token} />
+        ) : activeTab === 'floorplan-manager' ? (
+          <FloorPlanManager token={token} />
         ) : activeTab === 'projects' ? (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-8">

@@ -598,6 +598,104 @@ app.put('/api/defect-categories', adminOnly, async (req, res) => {
   }
 });
 
+// --- Floor Plan File Management ---
+const FLOORPLANS_DIR = path.join(path.dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Z]:)/, '$1'), 'public', 'floorplans');
+
+// List existing floorplan files for a project
+app.get('/api/admin/floorplans/:projectId', adminOnly, async (req, res) => {
+  const { projectId } = req.params;
+  const projectDir = path.join(FLOORPLANS_DIR, projectId);
+  try {
+    if (!fs.existsSync(projectDir)) {
+      return res.json({ files: [] });
+    }
+    const files = fs.readdirSync(projectDir)
+      .filter(f => /\.(jpg|jpeg|png)$/i.test(f))
+      .map(f => {
+        const stats = fs.statSync(path.join(projectDir, f));
+        return {
+          name: f,
+          size: stats.size,
+          url: `/Building-Inspection-System/floorplans/${projectId}/${f}`
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ files });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upload a floor plan file (JSON with base64 data)
+app.post('/api/admin/floorplans/upload', adminOnly, async (req, res) => {
+  try {
+    const { projectId, targetFilename, fileData } = req.body;
+
+    if (!projectId || !targetFilename || !fileData) {
+      return res.status(400).json({ error: 'Missing required fields: projectId, targetFilename, fileData' });
+    }
+
+    // Decode base64 data URL to buffer
+    const base64String = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+    const fileBuffer = Buffer.from(base64String, 'base64');
+
+    if (fileBuffer.length === 0) {
+      return res.status(400).json({ error: 'File data is empty' });
+    }
+
+    // Ensure target filename ends with .jpg
+    let finalFilename = targetFilename;
+    if (!/\.jpg$/i.test(finalFilename)) {
+      finalFilename = finalFilename.replace(/\.[^.]+$/, '') + '.jpg';
+    }
+
+    // Sanitize filename (allow alphanumeric, Chinese characters, underscore, hyphen, dot)
+    const safeFilename = finalFilename.replace(/[^a-zA-Z0-9\u4e00-\u9fff_\-\.]/g, '');
+    if (!safeFilename) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
+
+    // Ensure project directory exists
+    const projectDir = path.join(FLOORPLANS_DIR, projectId);
+    if (!fs.existsSync(projectDir)) {
+      fs.mkdirSync(projectDir, { recursive: true });
+    }
+
+    // Write file
+    const filePath = path.join(projectDir, safeFilename);
+    fs.writeFileSync(filePath, fileBuffer);
+
+    console.log(`[FloorPlan] Saved ${safeFilename} (${fileBuffer.length} bytes) to ${projectDir}`);
+
+    res.json({
+      success: true,
+      filename: safeFilename,
+      url: `/Building-Inspection-System/floorplans/${projectId}/${safeFilename}`
+    });
+  } catch (err) {
+    console.error('[FloorPlan Upload Error]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete a floor plan file
+app.delete('/api/admin/floorplans/:projectId/:filename', adminOnly, async (req, res) => {
+  const { projectId, filename } = req.params;
+  // Sanitize filename to prevent path traversal
+  const safeFilename = path.basename(filename);
+  const filePath = path.join(FLOORPLANS_DIR, projectId, safeFilename);
+
+  try {
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '檔案不存在' });
+    }
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(port, () => {
   console.log(`SQLite-backed Server running at http://localhost:${port}`);
 });
